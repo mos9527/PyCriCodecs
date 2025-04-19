@@ -923,8 +923,7 @@ class USMBuilder:
                         0,
                         0
                     )
-                    chk += metadata
-                    chk.ljust(len(metadata) + padding, b"\x00")
+                    chk += metadata.ljust(len(metadata) + padding, b"\x00")
                     audio_metadata.append(chk)
                     chno += 1
 
