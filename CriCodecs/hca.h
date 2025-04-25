@@ -78,7 +78,7 @@ void clHCA_ReadSamples16(clHCA *, signed short *outSamples);
 /* Sets a 64 bit encryption key, to properly decode blocks. This may be called
  * multiple times to change the key, before or after clHCA_DecodeHeader.
  * Key is ignored if the file is not encrypted. */
-void setkey(clHCA *, unsigned long long keycode);
+void clHCA_SetKey(clHCA *, unsigned long long keycode);
 
 /* Tests a single frame for validity, mainly to test if current key is correct.
  * Returns <0 on incorrect block (wrong key), 0 on silent block (not useful to determine)
