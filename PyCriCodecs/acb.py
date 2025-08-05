@@ -51,13 +51,16 @@ class ACB(UTF):
         return awbObj
     
     @awb.setter
-    def awb(self, awb: str | bytes) -> None:
-        ''' Sets the *packed* AWB payload from AWBBuilder.build()'''
+    def awb(self, awb: bytes | None) -> None:
+        ''' Sets the *packed* AWB payload from AWBBuilder.build()
+        
+        If awb is None, the decoder should look for external AWB file based on the ACB Name field.
+        '''
         payload = self.payload[0]
-        if type(awb) == str:
-            payload['AwbFile'] = (UTFTypeValues.bytes, awb.encode(self.encoding))
-        elif type(awb) == bytes:
+        if type(awb) == bytes:
             payload['AwbFile'] = (UTFTypeValues.bytes, awb)
+        elif awb is None:
+            payload['AwbFile'] = (UTFTypeValues.bytes, b'')
         else:
             raise TypeError("AWB must be a string or bytes, got %s" % type(awb))
     
