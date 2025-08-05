@@ -21,7 +21,7 @@ Building:
 - CPK (All CPK modes)
 - AWB (Anything)
 - USM (VP9 support only, ADX or HCA Audio support, multiple audio streams support as well, VP9/ADX only tested and for sure working!)
-
+- ACB (Very basic, current API only provides a way to swap the AWB content. If you know what you're doing, you may modify the raw UTF tables and save it yourself.)
 Encoding:
 - HCA (HCA Version 2.0)
 - ADX (All versions, any bitdepth, any blocksize, any HighPass Frequence, All encoding versions)
@@ -36,7 +36,9 @@ or alternatively
 pip install .
 ```
 
-Note: all libs (except ADX) here are standardized to take either a filename/path or bytes/bytearray, so you can swap both.
+Note: all libs (except ADX, ACB, AWB) here are standardized to take either a filename/path or bytes/bytearray, so you can swap both.
+
+For ACB, AWB inputs, filenames or other stream-like objects are supported. The outputs are always bytes, so you can write them to a file or use them as you want.
 
 Also, for audio related codecs, the looping input and output is defined in the metadata, the WAV file will not loop, but it will have a "smpl" chunk in the header, same if you want to encode a looping HCA or an ADX, the WAV must have a smpl chunk.
 
@@ -120,6 +122,23 @@ for file in awbObj.getfiles():
 
 # or you can call the extract function, not advised.
 awbObj.extract()
+```
+
+##### For Editing ACB Content:
+```python
+from PyCriCodecs import *
+
+# Swaps the waveform with a WAV file.
+# This DOES NOT change the cuesheets, and thus may be problematic if your sample duration is different.
+hca = HCA("WAV/44100_5s.wav")
+hca_bytes = hca.encode()
+
+src = ACB("ACB/0001_01.acb")
+awb = AWBBuilder([hca_bytes], src.awb.subkey, src.awb.version, src.awb.id_intsize, src.awb.align)
+
+src.awb = awb.build()
+build = ACBBuilder(src)
+open("edited.acb", "wb").write(build.build())
 ```
 
 Check the [Wiki](https://github.com/LittleChungi/PyCriCodecs/wiki/Docs-and-Thoughts) for my thoughts, plans, more options, and some details as well for documentation.

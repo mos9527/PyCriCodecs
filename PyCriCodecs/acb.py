@@ -1,4 +1,6 @@
 from struct import iter_unpack
+from typing import BinaryIO
+from io import BytesIO
 from .chunk import *
 from .utf import UTF, UTFBuilder
 from .awb import AWB, AWBBuilder
@@ -7,40 +9,57 @@ import os
 
 # TODO revamp the whole ACB class. ACB is a lot more complex with those @UTF tables.
 class ACB(UTF):
-    """ An ACB is basically a giant @UTF table. Use this class to extract any ACB. """
-    __slots__ = ["filename", "payload", "filename", "awb"]
+    """ An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place. """
+    __slots__ = ["filename", "payload", "filename", "_table_names"]
     payload: list
     filename: str
-    awb: AWB
+    _table_names : dict # XXX: Hacky. Though with current routines this would be otherwise dropped, decoders need this.
 
     def __init__(self, filename) -> None:
         self.payload = UTF(filename).get_payload()
         self.filename = filename
-        self.acbparse(self.payload)
+        self._table_names = {}
+        self.acbparse(self.payload)       
         # TODO check on ACB version.
     
     def acbparse(self, payload: list) -> None:
-        """ Recursively parse the payload. """
+        """Recursively parse the payload. """
         for dict in range(len(payload)):
             for k, v in payload[dict].items():
                 if v[0] == UTFTypeValues.bytes:
                     if v[1].startswith(UTFType.UTF.value): #or v[1].startswith(UTFType.EUTF.value): # ACB's never gets encrypted? 
-                        par = UTF(v[1]).get_payload()
+                        par = UTF(v[1])
+                        self._table_names[(dict, k)] = par.table_name
+                        par = par.get_payload()
                         payload[dict][k] = par
                         self.acbparse(par)
-        self.load_awb()
-    
-    def load_awb(self) -> None:
+
+    @property
+    def awb(self) -> AWB:
         # There are two types of ACB's, one that has an AWB file inside it,
         # and one with an AWB pair.
-        if self.payload[0]['AwbFile'][1] == b'':
+        payload = self.payload[0]
+        if payload['AwbFile'][1] == b'':
+            # External AWB files
             if type(self.filename) == str:
-                awbObj = AWB(os.path.join(os.path.dirname(self.filename), self.payload[0]['Name'][1]+".awb"))
+                awbObj = AWB(os.path.join(os.path.dirname(self.filename), payload['Name'][1]+".awb"))
             else:
-                awbObj = AWB(self.payload[0]['Name'][1]+".awb")
+                awbObj = AWB(payload['Name'][1]+".awb")
         else:
-            awbObj = AWB(self.payload[0]['AwbFile'][1])
-        self.awb = awbObj
+            # Bytes array
+            awbObj = AWB(payload['AwbFile'][1])
+        return awbObj
+    
+    @awb.setter
+    def awb(self, awb: str | bytes) -> None:
+        ''' Sets the *packed* AWB payload from AWBBuilder.build()'''
+        payload = self.payload[0]
+        if type(awb) == str:
+            payload['AwbFile'] = (UTFTypeValues.bytes, awb.encode(self.encoding))
+        elif type(awb) == bytes:
+            payload['AwbFile'] = (UTFTypeValues.bytes, awb)
+        else:
+            raise TypeError("AWB must be a string or bytes, got %s" % type(awb))
     
     # revamping...
     def exp_extract(self, decode: bool = False, key = 0):
@@ -177,4 +196,19 @@ class ACB(UTF):
 
 # TODO Have to finish correct ACB extracting first.
 class ACBBuilder(UTFBuilder):
-    pass
+    acb : ACB
+    def __init__(self, acb: ACB) -> None:
+        self.acb = acb
+
+    def acbunparse(self, payload: list, name='Header') -> None:
+        """Recursively packs the potentially unpacked payload data back into binary format"""
+        for dict in range(len(payload)):
+            for k, v in payload[dict].items():
+                if type(v) == list:
+                    payload[dict][k] = (UTFTypeValues.bytes, self.acbunparse(v, self.acb._table_names[(dict,k)]))
+        return UTFBuilder(payload, table_name=name).parse()
+    
+    def build(self) -> bytes:
+        """ Builds an ACB file from the current ACB object."""
+        binary = self.acbunparse(self.acb.payload)
+        return binary
