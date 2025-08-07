@@ -402,8 +402,8 @@ class UTFViewer(object):
         payload[item] = (typeof, value)
 
     def __dir__(self):
-        payload = super().__getattribute__('_payload')
-        return list(payload.keys()) + super().__dir__()
+        annotations = super().__getattribute__('__annotations__')
+        return list(annotations.keys()) + list(super().__dir__())
 
     @staticmethod
     def _view_as(payload: dict, clazz: Type[T]) -> T:        
