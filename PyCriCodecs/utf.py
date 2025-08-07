@@ -1,4 +1,5 @@
-from typing import BinaryIO
+from typing import BinaryIO, TypeVar, Type, List
+T = TypeVar('T')
 from io import BytesIO, FileIO
 from struct import unpack, calcsize, pack
 from .chunk import *
@@ -353,3 +354,65 @@ class UTFBuilder:
             return("II")
         else:
             raise Exception("Unkown data type.")
+
+class UTFViewer(object):
+    """Base class for a non-owning view of a UTF table dictionary, or a list of which.
+    Nested classes are supported.
+    
+    Example:
+    ```python
+        class CueNameTable(UTFViewer):
+            CueName : str
+            CueIndex : int
+        class ACBTable(UTFViewer):
+            CueNameTable : List[CueNameTable]
+            Awb : AWB
+
+        src = ACB(ACB_sample)
+        payload = ACBTable(src.payload)
+        name = payload.CueNameTable
+        name_str = name[0].CueName
+    ```
+    """
+    _payload : dict
+    def __init__(self, payload):
+        assert isinstance(payload, dict), "Payload must be a dictionary"
+        super().__setattr__('_payload', payload)
+
+    def __getattr__(self, item):
+        annotations = super().__getattribute__('__annotations__')
+        # Nested definitions
+        if item in annotations:
+            sub = annotations[item]
+            reduced = getattr(sub, "__args__", [None])[0]
+            reduced = reduced or sub
+            if issubclass(reduced, UTFViewer):
+                return self._view_as(self._payload[item], reduced)
+        payload = super().__getattribute__('_payload')
+        if item not in payload:
+            return super().__getattribute__(item)
+        _, value = payload[item]
+        return value
+
+    def __setattr__(self, item, value):
+        payload = super().__getattribute__('_payload')
+        if item not in payload:
+            raise AttributeError(f"{item} not in payload")
+        typeof, _ = payload[item]
+        payload[item] = (typeof, value)
+
+    def __dir__(self):
+        payload = super().__getattribute__('_payload')
+        return list(payload.keys()) + super().__dir__()
+
+    @staticmethod
+    def _view_as(payload: dict, clazz: Type[T]) -> T:        
+        if not issubclass(clazz, UTFViewer):
+            raise TypeError("class must be a subclass of UTFViewer")
+        return clazz(payload)
+
+    def __new__(cls: Type[T], payload: list | dict) -> T | List[T]:
+        if isinstance(payload, list):
+            return [cls._view_as(item, cls) for item in payload]
+        return super().__new__(cls)
+    

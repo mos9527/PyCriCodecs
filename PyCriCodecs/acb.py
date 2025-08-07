@@ -2,24 +2,30 @@ from struct import iter_unpack
 from typing import BinaryIO
 from io import BytesIO
 from .chunk import *
-from .utf import UTF, UTFBuilder
+from .utf import UTF, UTFBuilder, UTFViewer
 from .awb import AWB, AWBBuilder
 from .hca import HCA
 import os
 
-# TODO revamp the whole ACB class. ACB is a lot more complex with those @UTF tables.
+# Credit:
+# - https://github.com/vgmstream/vgmstream/blob/master/src/meta/acb.c
+# - Original work by https://github.com/Youjose/PyCriCodecs
+
+class CueName(UTFViewer):
+    CueIndex : int
+    CueName : str
 class ACB(UTF):
     """ An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place. """
-    __slots__ = ["filename", "payload", "filename", "_table_names"]
-    payload: list
+    __slots__ = ["filename", "_payload", "filename", "_table_names"]
+    _payload: list
     filename: str
     _table_names : dict # XXX: Hacky. Though with current routines this would be otherwise dropped, decoders need this.
 
     def __init__(self, filename) -> None:
-        self.payload = UTF(filename).get_payload()
+        self._payload = UTF(filename).get_payload()
         self.filename = filename
         self._table_names = {}
-        self.acbparse(self.payload)       
+        self.acbparse(self._payload)       
         # TODO check on ACB version.
     
     def acbparse(self, payload: list) -> None:
@@ -35,19 +41,23 @@ class ACB(UTF):
                         self.acbparse(par)
 
     @property
+    def payload(self) -> dict:
+        """Retrives the only top-level UTF table dict within the ACB file."""
+        return self._payload[0]
+    
+    @property
     def awb(self) -> AWB:
         # There are two types of ACB's, one that has an AWB file inside it,
         # and one with an AWB pair.
-        payload = self.payload[0]
-        if payload['AwbFile'][1] == b'':
+        if self.payload['AwbFile'][1] == b'':
             # External AWB files
             if type(self.filename) == str:
-                awbObj = AWB(os.path.join(os.path.dirname(self.filename), payload['Name'][1]+".awb"))
+                awbObj = AWB(os.path.join(os.path.dirname(self.filename), self.payload['Name'][1]+".awb"))
             else:
-                awbObj = AWB(payload['Name'][1]+".awb")
+                awbObj = AWB(self.payload['Name'][1]+".awb")
         else:
             # Bytes array
-            awbObj = AWB(payload['AwbFile'][1])
+            awbObj = AWB(self.payload['AwbFile'][1])
         return awbObj
     
     @awb.setter
@@ -56,148 +66,14 @@ class ACB(UTF):
         
         If awb is None, the decoder should look for external AWB file based on the ACB Name field.
         '''
-        payload = self.payload[0]
+        payload = self._payload[0]
         if type(awb) == bytes:
             payload['AwbFile'] = (UTFTypeValues.bytes, awb)
         elif awb is None:
             payload['AwbFile'] = (UTFTypeValues.bytes, b'')
         else:
             raise TypeError("AWB must be a string or bytes, got %s" % type(awb))
-    
-    # revamping...
-    def exp_extract(self, decode: bool = False, key = 0):
-        # There are two types of ACB's, one that has an AWB file inside it,
-        # and one with an AWB pair. Or multiple AWB's.
 
-        # TODO Add multiple AWB loading.
-        if self.payload[0]['AwbFile'][1] == b'':
-            if type(self.filename) == str:
-                awbObj = AWB(os.path.join(os.path.dirname(self.filename), self.payload[0]['Name'][1]+".awb"))
-            else:
-                awbObj = AWB(self.payload[0]['Name'][1]+".awb")
-        else:
-            awbObj = AWB(self.payload[0]['AwbFile'][1])
-
-        pl = self.payload[0]
-        names = [] # Where all filenames will end up in.
-        # cuename > cue > block > sequence > track > track_event > command > synth > waveform
-        # seems to be the general way to do it, some may repeat, and some may go back to other tables.
-        # I will try to make this code go through all of them in advance. 
-
-        """ Load Cue names and indexes. """
-        cue_names_and_indexes: list = []
-        for i in pl["CueNameTable"]:
-            cue_names_and_indexes.append((i["CueIndex"], i["CueName"]))
-        srt_names = sorted(cue_names_and_indexes, key=lambda x: x[0])
-        
-        """ Go through all cues and match wavforms or names. """
-        for i in cue_names_and_indexes:
-
-            cue_Info = pl["CueTable"][i[0]]
-            ref_type = cue_Info["ReferenceType"][1]
-            wavform = pl["WaveformTable"][i[0]]
-
-            if ref_type == 1:
-                usememory: bool = wavform['Streaming'][1] == 0
-
-                if "Id" in wavform:
-                    wavform["MemoryAwbId"] = wavform["Id"] # Old ACB's use "Id", so we default it to the new MemoryAwbId slot.
-
-                if usememory:
-                    assert len(wavform['MemoryAwbId']) == len(srt_names) # Will error if not so. TODO add extracting without filenames references.
-                    names = [y[1][1] for _,y in sorted(zip([x[1] for x in pl["WaveformTable"]], srt_names), key=lambda z: z[0])]
-                    break # We break, since we did everything in the line above. I don't think ref_type changes between cues.
-
-                else:
-                    # TODO
-                    raise NotImplementedError("ACB needs multiple AWB's, not unsupported yet.")
-
-            elif ref_type == 2:
-                # TODO
-                raise NotImplementedError("Unsupported ReferenceType.")
-
-            elif ref_type == 3:
-                sequence = pl['SequenceTable'][i[0]]
-                track_type = sequence['Type'][1] # Unused but will leave it here if needed.
-                for tr_idx in iter_unpack(">H", sequence['TrackIndex'][1]):
-                    # TODO I am here currently.
-                    pass
-
-            elif ref_type == 8:
-                # TODO
-                raise NotImplementedError("Unsupported ReferenceType.")
-
-            else:
-                raise NotImplementedError("Unknown ReferenceType inside ACB.")
-        
-    def parse_type1(self):
-        pass
-
-    def parse_type2(self):
-        pass
-
-    def parse_type3(self):
-        pass
-
-    def parse_type8(self):
-        pass
-
-    def parse_cues(self):
-        pass
-
-    def parse_synth(self):
-        pass
-
-    def parse_wavform(self):
-        pass
-
-    def parse_tracktable(self):
-        pass
-
-    def parse_commands(self):
-        pass
-
-    def parse_sequence(self):
-        pass
-
-    def extract(self, decode: bool = False, key: int = 0, dirname: str = ""):
-        """ Extracts audio files in an AWB/ACB without preserving filenames. """
-        if dirname:
-            os.makedirs(dirname, exist_ok=True)
-        filename = 0
-        for i in self.awb.getfiles():
-            Extension: str = self.get_extension(self.payload[0]['WaveformTable'][filename]['EncodeType'][1])
-            if decode and Extension == ".hca":
-                    hca = HCA(i, key=key, subkey=self.awb.subkey).decode()
-                    open(os.path.join(dirname, str(filename)+".wav"), "wb").write(hca)
-                    filename += 1
-            else:
-                open(os.path.join(dirname, f"{filename}{Extension}"), "wb").write(i)
-                filename += 1
-    
-    def get_extension(self, EncodeType: int) -> str:
-        if EncodeType == 0 or EncodeType == 3:
-            return ".adx" # Maybe 0 is ahx?
-        elif EncodeType == 2 or EncodeType == 6:
-            return ".hca"
-        elif EncodeType == 7 or EncodeType == 10:
-            return ".vag"
-        elif EncodeType == 8:
-            return ".at3"
-        elif EncodeType == 9:
-            return ".bcwav"
-        elif EncodeType == 11 or EncodeType == 18:
-            return ".at9"
-        elif EncodeType == 12:
-            return ".xma"
-        elif EncodeType == 13 or EncodeType == 4 or EncodeType == 5:
-            return ".dsp"
-        elif EncodeType == 19:
-            return ".m4a"
-        else:
-            return ""
-
-# TODO Have to finish correct ACB extracting first.
 class ACBBuilder(UTFBuilder):
     acb : ACB
     def __init__(self, acb: ACB) -> None:
@@ -212,6 +88,8 @@ class ACBBuilder(UTFBuilder):
         return UTFBuilder(payload, table_name=name).parse()
     
     def build(self) -> bytes:
-        """ Builds an ACB file from the current ACB object."""
-        binary = self.acbunparse(self.acb.payload)
+        """ Builds an ACB file from the current ACB object.
+        
+        The object may be modified in place before building, which will be reflected in the output binary."""
+        binary = self.acbunparse(self.acb._payload)
         return binary
