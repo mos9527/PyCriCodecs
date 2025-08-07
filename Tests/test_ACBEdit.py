@@ -14,3 +14,6 @@ awb = AWBBuilder([hca_bytes], src.awb.subkey, src.awb.version, src.awb.id_intsiz
 src.awb = awb.build()
 build = ACBBuilder(src)
 open(outfile, "wb").write(build.build())
+
+from pprint import pprint
+pprint()
