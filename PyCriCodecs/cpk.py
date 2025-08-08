@@ -382,12 +382,12 @@ class CPKBuilder:
                 "Glink": (UTFTypeValues.uint, 2),
                 "Flink": (UTFTypeValues.uint, 3),
                 "Attr" : (UTFTypeValues.uint, 1),
-                "Gdata": (UTFTypeValues.bytes, UTFBuilder(Gdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocGlink").parse()),
-                "Fdata": (UTFTypeValues.bytes, UTFBuilder(Fdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocFlink").parse()),
-                "Attrdata": (UTFTypeValues.bytes, UTFBuilder(Attrdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocAttr").parse()),
+                "Gdata": (UTFTypeValues.bytes, UTFBuilder(Gdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocGlink").bytes()),
+                "Fdata": (UTFTypeValues.bytes, UTFBuilder(Fdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocFlink").bytes()),
+                "Attrdata": (UTFTypeValues.bytes, UTFBuilder(Attrdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocAttr").bytes()),
             }
         ]
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkGtocInfo").parse()
+        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkGtocInfo").bytes()
 
     def generate_ETOC(self) -> bytearray:
         """ This is now unused, a CPK won't be unfuctional without it. I will leave it here for reference. """
@@ -397,7 +397,7 @@ class CPKBuilder:
                 "LocalDir": (UTFTypeValues.string, self.dirname)
             }
         ]
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkEtocInfo").parse()
+        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkEtocInfo").bytes()
 
     def generate_TOC(self) -> bytearray:
         payload = []
@@ -491,7 +491,7 @@ class CPKBuilder:
                 lent += sz
         if self.compress:
             self.files = temp
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkTocInfo").parse()
+        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkTocInfo").bytes()
 
     def get_files(self, lyst, root):
         for i in lyst:
@@ -691,7 +691,7 @@ class CPKBuilder:
                     "Comment": (UTFTypeValues.string, '<NULL>'),
                 }
             ]
-        return UTFBuilder(CpkHeader, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkHeader").parse()
+        return UTFBuilder(CpkHeader, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkHeader").bytes()
     
     def generate_ITOC(self) -> bytearray:
         if self.CpkMode == 2:
@@ -703,7 +703,7 @@ class CPKBuilder:
                         "TocIndex": (UTFTypeValues.int, i)
                     }
                 )
-            return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkExtendId").parse()
+            return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkExtendId").bytes()
         else:
             try:
                 files = sorted(os.listdir(self.dirname), key=int)
@@ -749,8 +749,8 @@ class CPKBuilder:
                 {
                    "FilesL" : (UTFTypeValues.uint, datallen),
                    "FilesH" : (UTFTypeValues.uint, datahlen),
-                   "DataL" : (UTFTypeValues.bytes, UTFBuilder(datal, table_name="CpkItocL", encrypt=False, encoding=self.encoding).parse()),
-                   "DataH" : (UTFTypeValues.bytes, UTFBuilder(datah, table_name="CpkItocH", encrypt=False, encoding=self.encoding).parse())
+                   "DataL" : (UTFTypeValues.bytes, UTFBuilder(datal, table_name="CpkItocL", encrypt=False, encoding=self.encoding).bytes()),
+                   "DataH" : (UTFTypeValues.bytes, UTFBuilder(datah, table_name="CpkItocH", encrypt=False, encoding=self.encoding).bytes())
                 }
             ]
-            return UTFBuilder(payload, table_name="CpkItocInfo", encrypt=self.encrypt, encoding=self.encoding).parse()
+            return UTFBuilder(payload, table_name="CpkItocInfo", encrypt=self.encrypt, encoding=self.encoding).bytes()

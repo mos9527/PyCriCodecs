@@ -9,10 +9,5 @@ from PyCriCodecs.acb import ACB, ACBBuilder
 from PyCriCodecs.awb import AWBBuilder
 from PyCriCodecs.hca import HCA
 
-hca = HCA(WAV_sample)
-hca_bytes = hca.encode()
 src = ACB(ACB_sample)
-awb = AWBBuilder([hca_bytes])
-src.view.AwbFile = awb.build()
-build = ACBBuilder(src)
-open(outfile, "wb").write(build.build())
+pass

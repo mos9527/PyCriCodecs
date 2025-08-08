@@ -142,7 +142,7 @@ class USM:
         chuncksize -= 0x18
         offset -= 0x18
         self.CRIDObj = UTF(self.stream.read(chuncksize))
-        CRID_payload = self.CRIDObj.get_payload()
+        CRID_payload = self.CRIDObj.dictarray
         self.__fileinfo.append({self.CRIDObj.table_name: CRID_payload})
         headers = [(int.to_bytes(x['stmid'][1], 4, "big")).decode() for x in CRID_payload[1:]]
         chnos = [x['chno'][1] for x in CRID_payload[1:]]
@@ -162,9 +162,9 @@ class USM:
                     output[header.decode()+"_"+str(chno)].extend(data)
                 elif type == 1 or type == 3:
                     ChunkObj = UTF(self.stream.read(chuncksize))
-                    self.__fileinfo.append({ChunkObj.table_name: ChunkObj.get_payload()})
+                    self.__fileinfo.append({ChunkObj.table_name: ChunkObj.dictarray})
                     if type == 1 and header == USMChunckHeaderType.SFA.value:
-                        codec = ChunkObj.get_payload()[0]
+                        codec = ChunkObj.dictarray[0]
                         self.codec = codec['audio_codec'][1] # So far, audio_codec of 2, means ADX, while audio_codec 4 means HCA.
                 else:
                     self.stream.seek(chuncksize, 1)
@@ -179,9 +179,9 @@ class USM:
                         output[header.decode()+"_0"].extend(data) # No channel number info, code here assumes it's a one channel data type.
                     elif type == 1 or type == 3:
                         ChunkObj = UTF(self.stream.read(chuncksize))
-                        self.__fileinfo.append({ChunkObj.table_name: ChunkObj.get_payload()})
+                        self.__fileinfo.append({ChunkObj.table_name: ChunkObj.dictarray})
                         if type == 1 and header == USMChunckHeaderType.SFA.value:
-                            codec = ChunkObj.get_payload()[0]
+                            codec = ChunkObj.dictarray[0]
                             self.codec = codec['audio_codec'][1]
                     else:
                         self.stream.seek(chuncksize, 1)
@@ -195,7 +195,7 @@ class USM:
         self.stream.seek(0)
         if not self.demuxed:
             self.demux()
-        table = self.CRIDObj.get_payload()
+        table = self.CRIDObj.dictarray
         point = 0 # My method is not ideal here, but it'll hopefully work.
         dirname = dirname # You can add a directory where all extracted data goes into.
         filenames = []
@@ -874,7 +874,7 @@ class USMBuilder:
         ]
         v = UTFBuilder(VIDEO_HDRINFO, table_name="VIDEO_HDRINFO")
         v.strings = b"<NULL>\x00" + v.strings
-        VIDEO_HDRINFO = v.parse()
+        VIDEO_HDRINFO = v.bytes()
         padding = (0x20 - (len(VIDEO_HDRINFO) % 0x20) if (len(VIDEO_HDRINFO) % 0x20) != 0 else 0)
         chk = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
@@ -906,7 +906,7 @@ class USMBuilder:
                         ]
                     p = UTFBuilder(payload, table_name="AUDIO_HEADER")
                     p.strings = b"<NULL>\x00" + p.strings
-                    metadata = p.parse()
+                    metadata = p.bytes()
                     padding = 0x20 - (len(metadata) % 0x20) if len(metadata) % 0x20 != 0 else 0
                     chk = USMChunkHeader.pack(
                         USMChunckHeaderType.SFA.value,
@@ -960,7 +960,7 @@ class USMBuilder:
                     AUDIO_HDRINFO[0].update({"ambisonics": (UTFTypeValues.uint, 0)})
                 p = UTFBuilder(AUDIO_HDRINFO, table_name="AUDIO_HDRINFO")
                 p.strings = b"<NULL>\x00" + p.strings
-                header = p.parse()
+                header = p.bytes()
                 padding = (0x20 - (len(header) % 0x20) if (len(header) % 0x20) != 0 else 0)
                 chk = USMChunkHeader.pack(
                     USMChunckHeaderType.SFA.value,
@@ -1002,7 +1002,7 @@ class USMBuilder:
         CRIUSF_DIR_STREAM[0]["filesize"] = (UTFTypeValues.uint, total_len)
         CRIUSF_DIR_STREAM = UTFBuilder(CRIUSF_DIR_STREAM, table_name="CRIUSF_DIR_STREAM")
         CRIUSF_DIR_STREAM.strings = b"<NULL>\x00" + CRIUSF_DIR_STREAM.strings
-        CRIUSF_DIR_STREAM = CRIUSF_DIR_STREAM.parse()
+        CRIUSF_DIR_STREAM = CRIUSF_DIR_STREAM.bytes()
 
         ##############################################
         # Parsing everything.
@@ -1076,7 +1076,7 @@ class USMBuilder:
         
         VIDEO_SEEKINFO = UTFBuilder(VIDEO_SEEKINFO, table_name="VIDEO_SEEKINFO")
         VIDEO_SEEKINFO.strings = b"<NULL>\x00" + VIDEO_SEEKINFO.strings
-        VIDEO_SEEKINFO = VIDEO_SEEKINFO.parse()
+        VIDEO_SEEKINFO = VIDEO_SEEKINFO.bytes()
         padding = 0x20 - len(VIDEO_SEEKINFO) % 0x20 if len(VIDEO_SEEKINFO) % 0x20 != 0 else 0
         seekinf = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
