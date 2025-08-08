@@ -11,5 +11,12 @@
             "module": "Tests.test_ACBEdit",
             "justMyCode": false
         },    
+        {
+            "name": "Test: USMEdit",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_USMEdit",
+            "justMyCode": false
+        },    
     ]
 }

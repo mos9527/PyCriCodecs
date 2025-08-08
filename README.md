@@ -21,7 +21,8 @@ Building:
 - CPK (All CPK modes)
 - AWB (Anything)
 - USM (VP9 support only, ADX or HCA Audio support, multiple audio streams support as well, VP9/ADX only tested and for sure working!)
-- ACB (Very basic, current API only provides a way to swap the AWB content. If you know what you're doing, you may modify the raw UTF tables and save it yourself.)
+- ACB (**Manual** Table editing for now. Extraction TODO (see `Tests/`, `Research/` for progress)
+
 Encoding:
 - HCA (HCA Version 2.0)
 - ADX (All versions, any bitdepth, any blocksize, any HighPass Frequence, All encoding versions)
@@ -95,7 +96,6 @@ usmObj = USM("filename.cpk") # or bytes, you can add a key by key="KEYINHEXGOESH
 usmObj.extract() # extracts all USM contents in the current directory. You can add a directory with extract(dirname = "Example")
 
 # You can also demux the USM internally and manage with the output bytes all you want.
-usmObj.demux() # Then you have access to output property.
 usmObj.output # This is a dict containing all chunks in the USM, each key has a value of a list with bytearrays.
 
 usmObj.get_metadata() # Not for the user specifically, but if you want to look at the info inside, this is one way.
@@ -104,8 +104,7 @@ usmObj.get_metadata() # Not for the user specifically, but if you want to look a
 # Needs at least a video to be able to build one USM file, you can add audio pretty easily too.
 usmObj = USMBuilder("filename.ivf", "filename.wav", key=0xKEYGOESINHERE, audio_codec="adx", encryptAudio=True) # Basic USM
 # You can add a list of audio paths/filenames as well instead of filenames, and that will be added into audio streams in order.
-usmObj.build() # Due to bad code, this is heavy on performance and will take some seconds based of the input files.
-usmbytes = usmObj.get_usm() # Will return the USM file as bytes. 
+usmbytes = usmObj.build() # Due to bad code, this is heavy on performance and will take some seconds based of the input files. Will return the USM file as bytes. 
 ```
 ##### For ACB or AWB extraction:
 ```python

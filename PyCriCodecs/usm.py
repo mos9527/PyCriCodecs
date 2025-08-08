@@ -14,37 +14,8 @@ from .hca import HCA
 # Apparently there is an older USM format called SofDec? This is for SofDec2 though.
 # Extraction working only for now, although check https://github.com/donmai-me/WannaCRI/
 # code for a complete breakdown of the USM format.
-class USM:
-    """ USM class for extracting infromation and data from a USM file. """
-    __slots__ = ["filename", "videomask1", "videomask2", "audiomask", "decrypt", 
-                "stream", "__fileinfo", "CRIDObj", "size", "output", "codec", "demuxed"]
-    filename: BinaryIO
-    videomask1: bytearray
-    videomask2: bytearray
-    audiomask: bytearray
-    decrypt: bool
-    stream: BinaryIO
-    __fileinfo: list
-    CRIDObj: UTF
-    output: dict[str, bytes]
-    size: int
-    codec: int
-    demuxed: bool
 
-    def __init__(self, filename, key: str = False):
-        """
-        Sets the decryption status, if the key is not given, it will return the plain SFV data.
-        If the key is given the code will decrypt SFA data if it was ADX, otherwise return plain SFA data.
-        """
-        self.filename = filename
-        self.decrypt = False
-
-        
-        if key and type(key) != bool:
-            self.decrypt = True
-            self.init_key(key)
-        self.load_file()
-    
+class USMCrypt:
     def init_key(self, key: str):
         if type(key) == str:
             if len(key) <= 16:
@@ -117,6 +88,80 @@ class USM:
             else:
                 self.audiomask[x] = self.videomask2[x]
     
+    # Decrypt SFV chunks or ALP chunks, should only be used if the video data is encrypted.
+    def VideoMask(self, memObj: bytearray) -> bytearray:
+        head = memObj[:0x40]
+        memObj = memObj[0x40:]
+        size = len(memObj)
+        # memObj len is a cached property, very fast to lookup
+        if size <= 0x200:
+            return (head + memObj)
+        data_view = memoryview(memObj).cast("Q")
+
+        # mask 2
+        mask = bytearray(self.videomask2)
+        mask_view = memoryview(mask).cast("Q")
+        vmask = self.videomask2
+        vmask_view = memoryview(vmask).cast("Q")
+
+        mask_index = 0
+
+        for i in range(32, size // 8):
+            data_view[i] ^= mask_view[mask_index]
+            mask_view[mask_index] = data_view[i] ^ vmask_view[mask_index]
+            mask_index = (mask_index + 1) % 4
+
+        # mask 1
+        mask = bytearray(self.videomask1)
+        mask_view = memoryview(mask).cast("Q")
+        mask_index = 0
+        for i in range(32):
+            mask_view[mask_index] ^= data_view[i + 32]
+            data_view[i] ^= mask_view[mask_index]
+            mask_index = (mask_index + 1) % 4
+
+        return (head + memObj)
+
+    # Decrypts SFA chunks, should just be used with ADX files.
+    def AudioMask(self, memObj: bytearray) -> bytearray:
+        head = memObj[:0x140]
+        memObj = memObj[0x140:]
+        size = len(memObj)
+        data_view = memoryview(memObj).cast("Q")
+        mask = bytearray(self.audiomask)
+        mask_view = memoryview(mask).cast("Q")
+        for i in range(size//8):
+            data_view[i] ^= mask_view[i%4]
+        return (head + memObj)
+class USM(USMCrypt):
+    """ USM class for extracting infromation and data from a USM file. """
+    filename: BinaryIO
+    videomask1: bytearray
+    videomask2: bytearray
+    audiomask: bytearray
+    decrypt: bool
+    stream: BinaryIO
+    __fileinfo: list
+    CRIDObj: UTF
+    output: dict[str, bytes]
+    size: int
+    codec: int
+    demuxed: bool
+
+    def __init__(self, filename, key: str = False):
+        """
+        Sets the decryption status, if the key is not given, it will return the plain SFV data.
+        If the key is given the code will decrypt SFA data if it was ADX, otherwise return plain SFA data.
+        """
+        self.filename = filename
+        self.decrypt = False
+
+        
+        if key and type(key) != bool:
+            self.decrypt = True
+            self.init_key(key)
+        self.load_file()
+    
     # Loads in the file and check if it's an USM file.
     def load_file(self):
         if type(self.filename) == str:
@@ -130,7 +175,7 @@ class USM:
         if header != USMChunckHeaderType.CRID.value:
             raise NotImplementedError(f"Unsupported file type: {header}")
         self.stream.seek(0)
-        self.demuxed = False
+        self.demux()
     
     # Demuxes the USM
     def demux(self) -> None:
@@ -276,51 +321,6 @@ class USM:
             data = data[:-padding]
         return data
 
-    # Decrypt SFV chunks or ALP chunks, should only be used if the video data is encrypted.
-    def VideoMask(self, memObj: bytearray) -> bytearray:
-        head = memObj[:0x40]
-        memObj = memObj[0x40:]
-        size = len(memObj)
-        # memObj len is a cached property, very fast to lookup
-        if size <= 0x200:
-            return (head + memObj)
-        data_view = memoryview(memObj).cast("Q")
-
-        # mask 2
-        mask = bytearray(self.videomask2)
-        mask_view = memoryview(mask).cast("Q")
-        vmask = self.videomask2
-        vmask_view = memoryview(vmask).cast("Q")
-
-        mask_index = 0
-
-        for i in range(32, size // 8):
-            data_view[i] ^= mask_view[mask_index]
-            mask_view[mask_index] = data_view[i] ^ vmask_view[mask_index]
-            mask_index = (mask_index + 1) % 4
-
-        # mask 1
-        mask = bytearray(self.videomask1)
-        mask_view = memoryview(mask).cast("Q")
-        mask_index = 0
-        for i in range(32):
-            mask_view[mask_index] ^= data_view[i + 32]
-            data_view[i] ^= mask_view[mask_index]
-            mask_index = (mask_index + 1) % 4
-
-        return (head + memObj)
-
-    # Decrypts SFA chunks, should just be used with ADX files.
-    def AudioMask(self, memObj: bytearray) -> bytearray:
-        head = memObj[:0x140]
-        memObj = memObj[0x140:]
-        size = len(memObj)
-        data_view = memoryview(memObj).cast("Q")
-        mask = bytearray(self.audiomask)
-        mask_view = memoryview(mask).cast("Q")
-        for i in range(size//8):
-            data_view[i] ^= mask_view[i%4]
-        return (head + memObj)
     
     def sbt_to_srt(self, stream: bytearray) -> list:
         """ Convert SBT chunks info to SRT. """
@@ -368,11 +368,7 @@ class USM:
 # There are a lot of unknowns, minbuf(minimum buffer of what?) and avbps(average bitrate per second)
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
-class USMBuilder:
-    __slots__ = ["ivfObj", "videomask1", "videomask2", "audiomask", "encrypt", "audio_codec",
-                "streams", "encryptAudio", "SFA_chunk_size", "base_interval_per_SFA_chunk", 
-                "video_codec", "SFV_interval_for_VP9", "audio", "video_filename", "minchk",
-                "audio_filenames", "minbuf", "avbps", "key", "usm"]
+class USMBuilder(USMCrypt):
     ivfObj: IVF
     videomask1: bytearray
     videomask2: bytearray
@@ -476,33 +472,19 @@ class USMBuilder:
                 self.streams.append(hcaObj)
         else:
             raise ValueError("Supported audio codecs in USM are only HCA and ADX.")
-    
-    def append_stream(self, audio):
-        assert type(audio) != list
-        if self.audio_codec == "adx":
-            wav_bytes = open(audio, "rb").read()
-            adxObj = ADX.encode(wav_bytes, AdxVersion=4, Encoding=3, force_not_looping=True)
-            self.streams.append(adxObj)
-        elif self.audio_codec == "hca":
-            hcaObj = HCA(audio, self.key)
-            if hcaObj.filetype == "wav":
-                hcaObj.encode(force_not_looping=True, encrypt=self.encryptAudio, keyless=False)
-            self.streams.append(hcaObj)
-        else:
-            raise ValueError("Supported audio codecs in USM are only HCA and ADX.")
-    
+
     def build(self) -> bytes:
         if not self.ivfObj:
             raise NotImplementedError("Loaded USM is not supported yet.") # saved with get_usm()
         if self.audio:
-            self.prepare_SFA()
-        self.prepare_SFV()
+            self._prepare_SFA()
+        self._prepare_SFV()
         # This will be a hit to performance, but I will store the building USM on memory instead of
         # flushing it to disk right away, this in case something going wrong.
-        self.get_data()
+        return self._build_all()        
     
     # So, so bad. FIXME
-    def get_data(self) -> bytes:
+    def _build_all(self) -> bytes:
         ivfinfo = self.ivfObj.info()
         self.ivfObj.stream.seek(0)
         current_interval = 0
@@ -719,27 +701,13 @@ class USMBuilder:
         # SFA chunks generator end.
         #########################################
         if self.audio:
-            self.build_usm(SFV_list, SFA_chunks)
+            self._build_chunks(SFV_list, SFA_chunks)
         else:
             self.streams = []
-            self.build_usm(SFV_list)
-        
-    
-    # TODO Add support for Subtitle information.
-    def build_usm(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None):
-        header = self.build_header(SFV_list, SFA_chunks, SBT_chunks)
-
-        if not self.audio:
-            chunks = SFV_list
-        else:
-            chunks = list(itertools.chain(SFV_list, *SFA_chunks))
-        chunks.sort(key=chunk_key_sort)
-        for chunk in chunks:
-            header += chunk
-
-        self.usm = header
-    
-    def build_header(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None) -> bytes:
+            self._build_chunks(SFV_list)
+        return self.usm
+            
+    def _build_header(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None) -> bytes:
 
         CRIUSF_DIR_STREAM = [
             dict(
@@ -1113,15 +1081,29 @@ class USMBuilder:
                 header += chk
         
         return header
-        
-    def prepare_SFV(self):
+                
+    # TODO Add support for Subtitle information.
+    def _build_chunks(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None):
+        header = self._build_header(SFV_list, SFA_chunks, SBT_chunks)
+
+        if not self.audio:
+            chunks = SFV_list
+        else:
+            chunks = list(itertools.chain(SFV_list, *SFA_chunks))
+        chunks.sort(key=chunk_key_sort)
+        for chunk in chunks:
+            header += chunk
+
+        self.usm = header
+
+    def _prepare_SFV(self):
         if self.video_codec == "vp9":
             ivfinfo = self.ivfObj.info()
             v_framerate = round(ivfinfo["time_base_denominator"] / ivfinfo["time_base_numerator"], 2)
             framerate = 2997
             self.SFV_interval_for_VP9 = round(framerate / v_framerate, 1) # Not the actual interval for the VP9 codec, but USM calculate this way.
     
-    def prepare_SFA(self):
+    def _prepare_SFA(self):
         """ Generates info needed per SFA stream. """
         self.SFA_chunk_size = []
         self.base_interval_per_SFA_chunk = []
@@ -1148,131 +1130,6 @@ class USMBuilder:
                 self.SFA_chunk_size.append(framesize)
                 # e.g. 64 for 48KHz and ~139 for 22.05KHz
                 self.base_interval_per_SFA_chunk.append((1024 * 3) / (hca.hca["SampleRate"] / 1000)) # I am not sure about this.
-    
-    def init_key(self, key: str):
-        # Copied from USM class, it's hard to combine them at this point with how the USM class is created for extraction.
-        if type(key) == str:
-            if len(key) < 16:
-                key = key.rjust(16, "0")
-                self.key == int(key, 16)
-                key1 = bytes.fromhex(key[8:])
-                key2 = bytes.fromhex(key[:8])
-            else:
-                raise ValueError("Inavild input key.")
-        elif type(key) == int:
-            self.key = key
-            key1 = int.to_bytes(key & 0xFFFFFFFF, 4, "big")
-            key2 = int.to_bytes(key >> 32, 4, "big")
-        else:
-            raise ValueError("Invalid key format, must be either a string or an integer.")
-        t = bytearray(0x20)
-        t[0x00:0x09] = [
-            key1[3],
-            key1[2],
-            key1[1],
-            (key1[0] - 0x34) % 0x100,
-            (key2[3] + 0xF9) % 0x100,
-            (key2[2] ^ 0x13) % 0x100,
-            (key2[1] + 0x61) % 0x100,
-            (key1[3] ^ 0xFF) % 0x100,
-            (key1[1] + key1[2]) % 0x100,
-        ]
-        t[0x09:0x0C] = [
-            (t[0x01] - t[0x07]) % 0x100,
-            (t[0x02] ^ 0xFF) % 0x100,
-            (t[0x01] ^ 0xFF) % 0x100,
-        ]
-        t[0x0C:0x0E] = [
-            (t[0x0B] + t[0x09]) % 0x100,
-            (t[0x08] - t[0x03]) % 0x100,
-        ]
-        t[0x0E:0x10] = [
-            (t[0x0D] ^ 0xFF) % 0x100,
-            (t[0x0A] - t[0x0B]) % 0x100,
-        ]
-        t[0x10] = ((t[0x08] - t[0x0F]) % 0x100)
-        t[0x11:0x17] = [
-            (t[0x10] ^ t[0x07]) % 0x100,
-            (t[0x0F] ^ 0xFF) % 0x100,
-            (t[0x03] ^ 0x10) % 0x100,
-            (t[0x04] - 0x32) % 0x100,
-            (t[0x05] + 0xED) % 0x100,
-            (t[0x06] ^ 0xF3) % 0x100,
-        ]
-        t[0x17:0x1A] = [
-            (t[0x13] - t[0x0F]) % 0x100,
-            (t[0x15] + t[0x07]) % 0x100,
-            (0x21 - t[0x13]) % 0x100,
-        ]
-        t[0x1A:0x1C] = [
-            (t[0x14] ^ t[0x17]) % 0x100,
-            (t[0x16] + t[0x16]) % 0x100,
-        ]
-        t[0x1C:0x1F] = [
-            (t[0x17] + 0x44) % 0x100,
-            (t[0x03] + t[0x04]) % 0x100,
-            (t[0x05] - t[0x16]) % 0x100,
-        ]
-        t[0x1F] = (t[0x1D] ^ t[0x13]) % 0x100
-        t2=[b'U', b'R', b'U', b'C']
-        self.videomask1 = t
-        self.videomask2 = bytearray(map(lambda x: x ^ 0xFF, t))
-        self.audiomask = bytearray(0x20)
-        for x in range(0x20):
-            if (x&1) == 1:
-                self.audiomask[x] = ord(t2[(x>>1)&3])
-            else:
-                self.audiomask[x] = self.videomask2[x]
-
-    # Decrypt SFV chunks or ALP chunks, should only be used if the video data is encrypted.
-    def VideoMask(self, memObj: bytes) -> bytes:
-        head = memObj[:0x40]
-        memObj = bytearray(memObj[0x40:])
-        size = len(memObj)
-        # memObj len is a cached property, very fast to lookup
-        if size <= 0x200:
-            return (head + memObj)
-        data_view = memoryview(memObj)
-
-
-        # mask 1
-        mask = bytearray(self.videomask1)
-        mask_view = memoryview(mask)
-        mask_index = 0
-        for i in range(0x100):
-            mask_view[mask_index] ^= data_view[i + 0x100]
-            data_view[i] ^= mask_view[mask_index]
-            mask_index = (mask_index + 1) % 32
-
-        # mask 2
-        mask = bytearray(self.videomask2)
-        mask_view = memoryview(mask)
-        vmask = self.videomask2
-        vmask_view = memoryview(vmask)
-
-        mask_index = 0
-
-        for i in range(0x100, size):
-            temp = data_view[i]
-            data_view[i] ^= mask_view[mask_index]
-            mask_view[mask_index] = temp ^ vmask_view[mask_index]
-            mask_index = (mask_index + 1) % 32
-
-        return bytes(head + memObj)
-
-    def AudioMask(self, memObj: bytes) -> bytes:
-        head = memObj[:0x140]
-        memObj = bytearray(memObj[0x140:])
-        size = len(memObj)
-        data_view = memoryview(memObj)
-        mask = bytearray(self.audiomask)
-        mask_view = memoryview(mask)
-        for i in range(size):
-            data_view[i] ^= mask_view[i%32]
-        return bytes(head + memObj)
-    
-    def get_usm(self) -> bytes:
-        return self.usm
 
 
 def chunk_key_sort(chunk):
