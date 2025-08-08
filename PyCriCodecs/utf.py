@@ -7,6 +7,8 @@ from .chunk import *
 
 class UTF:
 
+    _dictarray: list
+
     magic: bytes
     table_size: int
     rows_offset: int
@@ -16,8 +18,8 @@ class UTF:
     row_length: int
     num_rows: int
     stream: BinaryIO
-    _dictarray: list
     recursive: bool
+    encoding : str = 'utf-8'
 
     def __init__(self, stream, recursive=False):
         """Unpacks UTF table binary payload
@@ -303,7 +305,15 @@ class UTFBuilder:
         table_name: str = "PyCriCodecs_table",
         ignore_recursion: bool = False,
     ) -> None:
-        """Packs UTF payload back into their binary form"""
+        """Packs UTF payload back into their binary form
+        
+        Args:
+            dictarray: A list of dictionaries representing the UTF table.
+            encrypt: Whether to encrypt the table (default: False).
+            encoding: The character encoding to use (default: "utf-8").
+            table_name: The name of the table (default: "PyCriCodecs_table").
+            ignore_recursion: Whether to ignore recursion when packing (default: False).
+        """
         assert type(dictarray) == list, "dictarray must be a list of dictionaries (see UTF.dictarray)."
 
         # Preprocess for nested dictarray types
@@ -317,12 +327,13 @@ class UTFBuilder:
                             UTFTypeValues.bytes,
                             dfs(value, typeof_or_name),
                         )
+            # ? Could subtables be encrypted at all?
             return UTFBuilder(
-                payload, table_name=name, ignore_recursion=True
+                payload, encoding=encoding, table_name=name, ignore_recursion=True
             ).bytes()
 
         if not ignore_recursion:
-            dfs(dictarray)
+            dfs(dictarray, table_name)
         l = set([len(x) for x in dictarray])
         if len(l) != 1:
             raise ValueError("All dictionaries must be equal in length.")

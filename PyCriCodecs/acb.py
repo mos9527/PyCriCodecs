@@ -67,22 +67,13 @@ class ACBTable(UTFViewer):
 
 class ACB(UTF):
     """An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place."""
-
-    __slots__ = ["filename", "_payload", "filename", "_table_names"]
-    _payload: UTF
-    filename: str
-    _table_names: dict  # XXX: Hacky. Though with current routines this would be otherwise dropped, decoders need this.
-
     def __init__(self, filename) -> None:
-        self.filename = filename
-        self._table_names = {}        
-        self._payload = UTF(filename, recursive=True)
-        # TODO check on ACB version.
+        super().__init__(filename)
 
     @property
     def payload(self) -> dict:
         """Retrives the only top-level UTF table dict within the ACB file."""
-        return self._payload.dictarray[0]
+        return self.dictarray[0]
 
     @property
     def view(self) -> ACBTable:
@@ -90,17 +81,17 @@ class ACB(UTF):
         return ACBTable(self.payload)
 
 
-class ACBBuilder(UTFBuilder):
+class ACBBuilder:
     acb: ACB
 
     def __init__(self, acb: ACB) -> None:
         self.acb = acb
 
     def build(self) -> bytes:
-        """Builds an ACB file from the current ACB object.
+        """Builds an ACB binary blob from the current ACB object.
 
         The object may be modified in place before building, which will be reflected in the output binary.
         """
-        acb = deepcopy(self.acb)
-        binary = UTFBuilder(acb._payload.dictarray, acb._payload.table_name)
+        payload = deepcopy(self.acb.dictarray)
+        binary = UTFBuilder(payload, encoding=self.acb.encoding, table_name=self.acb.table_name)
         return binary.bytes()
