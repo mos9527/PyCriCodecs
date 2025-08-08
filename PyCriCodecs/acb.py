@@ -5,6 +5,7 @@ from .chunk import *
 from .utf import UTF, UTFBuilder, UTFViewer
 from .awb import AWB, AWBBuilder
 from .hca import HCA
+from copy import deepcopy
 import os
 
 # Credit:
@@ -54,7 +55,7 @@ class ACBTable(UTFViewer):
     Version: int
     VersionString: str
 
-    AwbFile: List[bytes]
+    AwbFile: bytes
     CueNameTable: List[CueNameTable]
     CueTable: List[CueTable]
     SequenceTable: List[SequenceTable]
@@ -126,5 +127,6 @@ class ACBBuilder(UTFBuilder):
 
         The object may be modified in place before building, which will be reflected in the output binary.
         """
-        binary = self.acbunparse(self.acb._payload)
+        acb = deepcopy(self.acb)
+        binary = self.acbunparse(acb._payload)
         return binary

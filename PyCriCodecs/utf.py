@@ -58,18 +58,25 @@ class UTF:
         target_data = []
         target_constant = []
         target_tuple = []
+        s_offsets = []
         for i in range(self.num_columns):
             flag = stream.read(1)[0]
             stflag = flag >> 4
             typeflag = flag & 0xF
             if stflag == 0x1:
-                target_constant.append(int.from_bytes(stream.read(4), "big"))
+                offset = int.from_bytes(stream.read(4), "big")
+                s_offsets.append(offset)
+                target_constant.append(offset)
                 types[2].append((">"+self.stringtypes(typeflag), typeflag))
             elif stflag == 0x3:
-                target_tuple.append((int.from_bytes(stream.read(4), "big"), unpack(">"+self.stringtypes(typeflag), stream.read(calcsize(self.stringtypes(typeflag))))))
+                offset = int.from_bytes(stream.read(4), "big")
+                s_offsets.append(offset)
+                target_tuple.append((offset, unpack(">"+self.stringtypes(typeflag), stream.read(calcsize(self.stringtypes(typeflag))))))
                 types[1].append((">"+self.stringtypes(typeflag), typeflag))
             elif stflag == 0x5:
-                target_data.append(int.from_bytes(stream.read(4), "big"))
+                offset = int.from_bytes(stream.read(4), "big")
+                s_offsets.append(offset)
+                target_data.append(offset)
                 types[0].append((">"+self.stringtypes(typeflag), typeflag))
             elif stflag == 0x7: # Exists in old CPK's.
                 # target_tuple.append((int.from_bytes(stream.read(4), "big"), int.from_bytes(stream.read(calcsize(self.stringtypes(typeflag))), "big")))
@@ -109,6 +116,9 @@ class UTF:
         t_t_dict = dict()
         self.table_name = strings_copy[self.finder(self.table_name, strings)]
         UTFTypeValuesList = list(UTFTypeValues)
+        s_orders = [strings_copy[self.finder(i, strings)] for i in s_offsets]
+        def ensure_order(d : dict) -> dict:
+            return {k: d[k] for k in s_orders if k in d}
         for i in range(len(target_constant)):
             if types[2][i][1] not in [0xA, 0xB]:
                 val = self.finder(target_constant[i], strings)
@@ -137,7 +147,7 @@ class UTF:
                 t_t_dict.update({strings_copy[self.finder(target_tuple[i][0], strings)]: (UTFTypeValues.bytes, bin_val)})
         temp_dict = dict()
         if len(rows) == 0:
-            self.__payload.append(t_t_dict)
+            self.__payload.append(ensure_order(t_t_dict))
         for i in range(len(rows)):
             if types[0][i%(len(types[0]))][1] not in [0xA, 0xB]:
                 table.setdefault(strings_copy[self.finder(target_data[i%(len(target_data))], strings)], []).append(rows[i][0])
@@ -152,8 +162,9 @@ class UTF:
                 temp_dict.update({strings_copy[self.finder(target_data[i%(len(target_data))], strings)]: (UTFTypeValues.bytes, bin_val)})
             if not (i+1)%(len(types[0])):
                 temp_dict.update(t_t_dict)
-                self.__payload.append(temp_dict)
+                self.__payload.append(ensure_order(temp_dict))
                 temp_dict = dict()
+        table = ensure_order(table)
         return table
     
     def stringtypes(self, type: int) -> str:
