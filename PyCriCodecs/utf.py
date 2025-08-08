@@ -272,7 +272,7 @@ class UTF:
 
     @property
     def table(self) -> dict:
-        """Returns a  dictionary representation of the UTF table."""
+        """Returns a dictionary representation of the UTF table."""
         keys = self._dictarray[0].keys()
         return {key: [d[key] for d in self._dictarray] for key in keys}
 

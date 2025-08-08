@@ -68,7 +68,7 @@ class ACBTable(UTFViewer):
 class ACB(UTF):
     """An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place."""
     def __init__(self, filename) -> None:
-        super().__init__(filename)
+        super().__init__(filename,recursive=True)
 
     @property
     def payload(self) -> dict:
@@ -80,6 +80,8 @@ class ACB(UTF):
         """Returns a view of the ACB file, with all known tables mapped to their respective classes."""
         return ACBTable(self.payload)
 
+    # TODO: Extraction routines
+    # See Research/ACBSchema.py. vgmstream presented 4 possible permutations of subsong retrieval.
 
 class ACBBuilder:
     acb: ACB
