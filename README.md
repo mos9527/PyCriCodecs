@@ -98,7 +98,7 @@ usmObj.extract() # extracts all USM contents in the current directory. You can a
 # You can also demux the USM internally and manage with the output bytes all you want.
 usmObj.output # This is a dict containing all chunks in the USM, each key has a value of a list with bytearrays.
 
-usmObj.get_metadata() # Not for the user specifically, but if you want to look at the info inside, this is one way.
+usmObj.metadata # Not for the user specifically, but if you want to look at the info inside, this is one way.
 
 # Building:
 # Needs at least a video to be able to build one USM file, you can add audio pretty easily too.
