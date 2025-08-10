@@ -50,5 +50,6 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 
 # Credits
 - https://github.com/Youjose/PyCriCodecs
+- https://github.com/Mikewando/PyCriCodecs ([PR#1 on USM](https://github.com/mos9527/PyCriCodecs/pull/1))
 - https://github.com/donmai-me/WannaCRI
 - https://github.com/vgmstream/vgmstream
