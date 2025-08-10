@@ -924,7 +924,7 @@ class USMBuilder(USMCrypt):
                     ),  # Could be 0 and ignore metadata?
                     "metadata_size": (
                         UTFTypeValues.uint,
-                        224,
+                        metadata_size,
                     ),
                     "ixsize": (UTFTypeValues.uint, self.video_stream.minbuf),
                     "pre_padding": (UTFTypeValues.uint, 0),
