@@ -1,8 +1,15 @@
 from . import sample_file_path, temp_file_path
-USM_sample = sample_file_path("USM/SofdecPrime.usm")
-ACB_sample = sample_file_path("ACB/0001_01.acb")
 
 from PyCriCodecs.usm import USMBuilder
-open(temp_file_path("build_MPEG1.usm"), 'wb').write(USMBuilder(sample_file_path('USM/MPEG1.mp4')).build())
-open(temp_file_path("build_H264.usm"), 'wb').write(USMBuilder(sample_file_path('USM/H264.h264')).build())
-open(temp_file_path("build_VP9.usm"), 'wb').write(USMBuilder(sample_file_path('USM/VP9.ivf')).build())
+def pack(src : str , codec : str):
+    with open(temp_file_path(f"build_{codec}.usm"), 'wb') as f:
+        builder = USMBuilder(src)
+        print(f'*Packing codec={codec}, instance={builder.video_stream}')
+        usm = builder.build()
+        print(f'Out {len(usm)} bytes')
+        f.write(usm)
+# Pack video stream without audio
+# USM codec format is automatically selected by input file
+pack(sample_file_path('USM/MPEG1.mp4'), 'MPEG1')
+pack(sample_file_path('USM/H264.h264'), 'H264')
+pack(sample_file_path('USM/VP9.ivf'), 'VP9')
