@@ -586,15 +586,12 @@ class UTFBuilder:
         return dataarray
 
 class UTFViewer:
-    
-    _list : object
-    _list_index : int
-
     _payload: dict
 
-    def __init__(self, payload, list : list = None, list_index : int = None):
-        """Construct a non-owning read-write view of a UTF table dictarray.
-        Nested classes are supported.        
+    def __init__(self, payload):
+        """Construct a non-owning read-write, deletable view of a UTF table dictarray.
+        Nested classes are supported.
+        Sorting (using .sort()) is done in-place and affects the original payload.
 
         Example:
         ```python
@@ -620,8 +617,6 @@ class UTFViewer:
         """
         assert isinstance(payload, dict), "Payload must be a dictionary."
         super().__setattr__("_payload", payload)
-        super().__setattr__("_list", list)
-        super().__setattr__("_list_index", list_index)
 
     def __getattr__(self, item):
         annotations = super().__getattribute__("__annotations__")
@@ -653,31 +648,54 @@ class UTFViewer:
         annotations = super().__getattribute__("__annotations__")
         return list(annotations.keys()) + list(super().__dir__())
 
-    def pop(self):
-        """Remove ourself from the original list, if we belong to one.
-
-        This only works for array-like containers."""
-        _list = super().__getattribute__('_list')
-        _list_index = super().__getattribute__('_list_index')
-        if not _list:
-            raise IndexError("pop from non-array container is not allowed")
-        del _list[_list_index]
-        super().__setattr__('_list', None)
-        super().__setattr__('_list_index', None)
-        super().__setattr__('_payload', None)
-
     @staticmethod
-    def _view_as(payload: dict, clazz: Type[T], list: list = None, list_index: int = None) -> T:
+    def _view_as(payload: dict, clazz: Type[T]) -> T:
         if not issubclass(clazz, UTFViewer):
             raise TypeError("class must be a subclass of UTFViewer")
-        return clazz(payload, list=list, list_index=list_index)
+        return clazz(payload)
 
-    class UTFViewerList(list):
+    class ListView(list):
+        _payload : List[dict]
+        def __init__(self, payload: list[T]):
+            self._payload = payload
+            super().__init__([UTFViewer(item) for item in payload])
+
         def pop(self, index = -1):
-            self[index].pop()
+            self._payload.pop(index)
             return super().pop(index)
         
+        def append(self, o : "UTFViewer"):
+            if len(self):
+                assert type(self[0]) == type(o), "all items in the list must be of the same type."
+            self._payload.append(o._payload)
+            return super().append(o)
+        
+        def extend(self, iterable):
+            for item in iterable:
+                self.append(item)
+
+        def insert(self, index, o : "UTFViewer"):
+            if len(self):
+                assert type(self[0]) == type(o), "all items in the list must be of the same type."            
+            self._payload.insert(index, o._payload)
+            return super().insert(index, o)
+
+        def clear(self):
+            self._payload.clear()
+            return super().clear()
+
+        def count(self, value):
+            raise NotImplementedError("count is not supported on views")
+        
+        def remove(self, value):
+            raise NotImplementedError("remove is not supported on views. use pop(index).")
+
+        def sort(self, key : callable):
+            p = sorted([(self[i], i) for i in range(len(self))], key=lambda x: key(x[0]))            
+            self._payload[:] = [self._payload[i] for x,i in p]     
+            self[:] = [x for x,i in p]            
+
     def __new__(cls: Type[T], payload: list | dict, **args) -> T | List[T]:
         if isinstance(payload, list):
-            return UTFViewer.UTFViewerList([cls._view_as(item, cls, payload, i) for i,item in enumerate(payload)])
+            return UTFViewer.ListView(payload)
         return super().__new__(cls)
