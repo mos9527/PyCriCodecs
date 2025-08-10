@@ -2,6 +2,21 @@
 Python frontend with a C++ backend for managing Criware formats. 
 Although for some tasks, python is used purely.
 
+# Updated Features
+## Support Status
+### ACB Cue sheets
+- [x] Editing & Saving (rather tedious for now. may add helpers later)
+- [ ] Extraction （massive TODO. see also https://github.com/mos9527/PyCriCodecs/blob/main/Research/ACBSchema.py)
+### USM Sofdec2
+#### Audio Encode
+- [?] HCA (not tested yet. ported from the original)
+- [ ] ADX (the og has it but non-functional. removed for now)
+#### Video Encode
+- [x] Sofdec Prime (MPEG1)
+- [?] H264 (not tested)
+- [?] VP9 (not tested)
+
+# Orignial README
 ## Supporting
 I am running this on Python 3.11, although other earlier versions might work
 

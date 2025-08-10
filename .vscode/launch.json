@@ -12,10 +12,10 @@
             "justMyCode": false
         },    
         {
-            "name": "Test: USMEdit",
+            "name": "Test: USMBuild",
             "type": "debugpy",
             "request": "launch",
-            "module": "Tests.test_USMEdit",
+            "module": "Tests.test_USMBuild",
             "justMyCode": false
         },    
     ]

@@ -6,4 +6,3 @@ from .usm import USM, USMBuilder
 from .utf import UTF, UTFBuilder, UTFViewer
 from .acb import ACB, ACBBuilder
 from .awb import AWB, AWBBuilder
-from .ivf import IVF
