@@ -3,6 +3,7 @@ Python frontend with a C++ backend for managing Criware formats.
 Although for some tasks, python is used purely.
 
 # Updated Features
+If not otherwise mentioned, all features marked with [x] are considered working, and has been verified with official tools.
 ## Support Status
 ### ACB Cue sheets
 - [x] Editing & Saving (rather tedious for now. may add helpers later)
@@ -12,9 +13,11 @@ Although for some tasks, python is used purely.
 - [?] HCA (not tested yet. ported from the original)
 - [ ] ADX (the og has it but non-functional. removed for now)
 #### Video Encode
-- [x] Sofdec Prime (MPEG1)
-- [?] H264 (not tested)
-- [?] VP9 (not tested)
+**NOTE**: Does not seek. FIXME.
+
+- [x] Sofdec Prime (MPEG1, from `.mp4` container)
+- [x] H264 (from `.h264` raw container)
+- [x] VP9 (from `.ivf` container)
 
 # Orignial README
 ## Supporting

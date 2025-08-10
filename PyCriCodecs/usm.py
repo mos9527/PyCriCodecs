@@ -463,7 +463,7 @@ class FFmpegParser:
 
     @property
     def framerate(self):
-        num, denom = self.stream['avg_frame_rate'].split('/')
+        num, denom = self.stream['r_frame_rate'].split('/')
         return int(int(num) / int(denom))
     
     @property
@@ -493,11 +493,6 @@ class FFmpegParser:
 
     def generate_SFV(self, builder : "USMBuilder"):        
         v_framerate = int(self.framerate)
-        framerate = 2997
-        SFV_interval_for_VP9 = round(
-            framerate / v_framerate, 1
-        )  # Not the actual interval for the VP9 codec, but USM calculate this way.
-
         current_interval = 0
         #########################################
         # SFV chunks generator.
@@ -522,7 +517,7 @@ class FFmpegParser:
                 0,
                 0,
                 0,
-                current_interval,
+                int(current_interval),
                 v_framerate,
                 0,
                 0,
@@ -533,7 +528,7 @@ class FFmpegParser:
             SFV_chunk = SFV_chunk.ljust(datalen + 0x18 + padlen + 0x8, b"\x00")
             SFV_list.append(SFV_chunk)
             count += 1
-            current_interval = int(count * SFV_interval_for_VP9)
+            current_interval = round(count / self.framerate, 1)
             if is_keyframe:
                 self.minchk += 1
             if self.minbuf < datalen:
@@ -551,14 +546,22 @@ class FFmpegParser:
 class VP9Encoder(FFmpegParser):
     MPEG_CODEC = 9
     MPEG_DCPREC = 0
-
+    VERSION = 16777984
+    def __init__(self, filename):
+        super().__init__(filename)
+        assert self.format == 'ivf', "must be ivf format."
 class H264Encoder(FFmpegParser):
     MPEG_CODEC = 5
     MPEG_DCPREC = 11
-
+    VERSION = 0
+    
+    def __init__(self, filename):
+        super().__init__(filename)
+        assert self.format == 'h264', "must be raw h264 data. transcode with '.h264' suffix as output"
 class MPEG1Encoder(FFmpegParser):
     MPEG_CODEC = 1
     MPEG_DCPREC = 11
+    VERSION = 0
 
 class HCAEncoder(HCA):
     AUDIO_CODEC = 4
@@ -812,7 +815,7 @@ class USMBuilder(USMCrypt):
         # Main USM file
         CRIUSF_DIR_STREAM = [
             dict(
-                fmtver=(UTFTypeValues.uint, 0),
+                fmtver=(UTFTypeValues.uint, self.video_stream.VERSION),
                 filename=(
                     UTFTypeValues.string,
                     os.path.splitext(os.path.basename(self.video_stream.filename))[0] + '.usm'
@@ -833,7 +836,7 @@ class USMBuilder(USMCrypt):
         v_filesize = self.video_stream.filesize        
 
         video_dict = dict(
-            fmtver=(UTFTypeValues.uint, 0),
+            fmtver=(UTFTypeValues.uint, self.video_stream.VERSION),
             filename=(UTFTypeValues.string, os.path.basename(self.video_stream.filename)),
             filesize=(UTFTypeValues.uint, v_filesize),
             datasize=(UTFTypeValues.uint, 0),
@@ -1066,8 +1069,7 @@ class USMBuilder(USMCrypt):
                     sum([(len(x) + 0x40) if len(x) else 0 for x in audio_metadata])
                 )
             )
-        )
-        print('*** First chunk', first_chk_ofs)
+        )        
         VIDEO_SEEKINFO = comp_seek_info(first_chk_ofs)
         total_len = sum([len(x) for x in SFV_list]) + first_chk_ofs
         if self.enable_audio:
