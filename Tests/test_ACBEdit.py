@@ -12,5 +12,8 @@ from PyCriCodecs.hca import HCA
 src = ACB(ACB_sample)
 awb = AWBBuilder([HCA(WAV_sample).encode()])
 src.view.AwbFile = awb.build()
+src.view.CueNameTable[0].CueName = "The New Cue"
+src.view.CueNameTable.pop(1)
+src.view.CueTable.pop(1)
 build = ACBBuilder(src)
 open(outfile, "wb").write(build.build())

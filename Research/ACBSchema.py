@@ -4,6 +4,7 @@ from PyCriCodecs import UTFTypeValues as T
 # Taken from Tests/ACB/0001_01.acb
 {
     "AcbGuid": (T.bytes, b"U\x0f?4 \xbaqF\x93\xad\x1a?\xfd\xba\xec4"),    
+    # Different across files
     "AcbVolume": (T.float, 1.0),
     "AcfMd5Hash": (T.bytes, b"3\x9d.{O\xe0\xc9=-\xd1N\x8cl\xb4K\r"),
     # ACF files are always external

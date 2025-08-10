@@ -51,6 +51,7 @@ class WaveformTable(UTFViewer):
 
 
 class ACBTable(UTFViewer):
+    AcbGuid: bytes
     Name: str
     Version: int
     VersionString: str

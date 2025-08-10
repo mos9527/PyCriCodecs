@@ -587,9 +587,12 @@ class UTFBuilder:
 
 class UTFViewer:
     
+    _list : object
+    _list_index : int
+
     _payload: dict
 
-    def __init__(self, payload):
+    def __init__(self, payload, list : list = None, list_index : int = None):
         """Construct a non-owning read-write view of a UTF table dictarray.
         Nested classes are supported.        
 
@@ -603,12 +606,22 @@ class UTFViewer:
                 Awb : AWB
             src = ACB(ACB_sample)
             payload = ACBTable(src.payload)
+            >>> Referencing items through Python is allowed
             name = payload.CueNameTable
+            >>> Lists can be indexed
             name_str = name[0].CueName
+            >>> Deleting items from lists is also allowed
+            src.view.CueNameTable.pop(1)
+            src.view.CueTable.pop(1)
+            >>> The changes will be reflected in the original UTF payload
+            
+            See __new__ for the actual constructor.
         ```
         """
         assert isinstance(payload, dict), "Payload must be a dictionary."
         super().__setattr__("_payload", payload)
+        super().__setattr__("_list", list)
+        super().__setattr__("_list_index", list_index)
 
     def __getattr__(self, item):
         annotations = super().__getattribute__("__annotations__")
@@ -640,13 +653,31 @@ class UTFViewer:
         annotations = super().__getattribute__("__annotations__")
         return list(annotations.keys()) + list(super().__dir__())
 
+    def pop(self):
+        """Remove ourself from the original list, if we belong to one.
+
+        This only works for array-like containers."""
+        _list = super().__getattribute__('_list')
+        _list_index = super().__getattribute__('_list_index')
+        if not _list:
+            raise IndexError("pop from non-array container is not allowed")
+        del _list[_list_index]
+        super().__setattr__('_list', None)
+        super().__setattr__('_list_index', None)
+        super().__setattr__('_payload', None)
+
     @staticmethod
-    def _view_as(payload: dict, clazz: Type[T]) -> T:
+    def _view_as(payload: dict, clazz: Type[T], list: list = None, list_index: int = None) -> T:
         if not issubclass(clazz, UTFViewer):
             raise TypeError("class must be a subclass of UTFViewer")
-        return clazz(payload)
+        return clazz(payload, list=list, list_index=list_index)
 
-    def __new__(cls: Type[T], payload: list | dict) -> T | List[T]:
+    class UTFViewerList(list):
+        def pop(self, index = -1):
+            self[index].pop()
+            return super().pop(index)
+        
+    def __new__(cls: Type[T], payload: list | dict, **args) -> T | List[T]:
         if isinstance(payload, list):
-            return [cls._view_as(item, cls) for item in payload]
+            return UTFViewer.UTFViewerList([cls._view_as(item, cls, payload, i) for i,item in enumerate(payload)])
         return super().__new__(cls)
