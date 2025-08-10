@@ -428,70 +428,73 @@ class USM(USMCrypt):
         """Function to return USM metadata after demuxing."""
         return self.__fileinfo
 
+
 # There are a lot of unknowns, minbuf(minimum buffer of what?) and avbps(average bitrate per second)
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
-class FFmpegParser:    
+class FFmpegParser:
 
-    filename : str
-    filesize : int
-    
-    info : dict
-    file : FileIO
-        
+    filename: str
+    filesize: int
+
+    info: dict
+    file: FileIO
+
     minchk: int
     minbuf: int
     avbps: int
 
-    def __init__(self, filename : str):
+    def __init__(self, filename: str):
         self.filename = os.path.abspath(filename)
-        self.info = ffmpeg.probe(self.filename, show_entries="packet=dts,pts_time,pos,flags")
+        self.info = ffmpeg.probe(
+            self.filename, show_entries="packet=dts,pts_time,pos,flags"
+        )
         self.file = open(self.filename, "rb")
         self.filesize = os.path.getsize(self.filename)
 
     @property
     def format(self):
-        return self.info['format']['format_name']
-    
+        return self.info["format"]["format_name"]
+
     @property
     def stream(self):
-        return self.info['streams'][0]
-    
+        return self.info["streams"][0]
+
     @property
     def codec(self):
-        return self.stream['codec_name']
+        return self.stream["codec_name"]
 
     @property
     def framerate(self):
-        num, denom = self.stream['r_frame_rate'].split('/')
+        num, denom = self.stream["r_frame_rate"].split("/")
         return int(int(num) / int(denom))
-    
+
     @property
     def packets(self):
-        return self.info['packets']
+        return self.info["packets"]
 
     @property
     def width(self):
-        return self.stream['width']
+        return self.stream["width"]
 
     @property
     def height(self):
-        return self.stream['height']
+        return self.stream["height"]
 
     @property
     def frame_count(self):
         return len(self.packets)
 
     def frames(self):
-        '''frame data, frame dict, is keyframe'''
-        offsets = [int(packet['pos']) for packet in self.packets] + [self.filesize]
+        """frame data, frame dict, is keyframe"""
+        offsets = [int(packet["pos"]) for packet in self.packets] + [self.filesize]
         for i, frame in enumerate(self.packets):
             frame_size = offsets[i + 1] - offsets[i]
             self.file.seek(offsets[i])
             raw_frame = self.file.read(frame_size)
-            yield raw_frame, frame, frame['flags'][0] == 'K'
+            yield raw_frame, frame, frame["flags"][0] == "K"
 
-    def generate_SFV(self, builder : "USMBuilder"):        
+    def generate_SFV(self, builder: "USMBuilder"):
         v_framerate = int(self.framerate)
         current_interval = 0
         #########################################
@@ -543,43 +546,53 @@ class FFmpegParser:
             SFV_list.append(SFV_chunk)
         return SFV_list
 
+
 class VP9Encoder(FFmpegParser):
     MPEG_CODEC = 9
     MPEG_DCPREC = 0
     VERSION = 16777984
+
     def __init__(self, filename):
         super().__init__(filename)
-        assert self.format == 'ivf', "must be ivf format."
+        assert self.format == "ivf", "must be ivf format."
+
+
 class H264Encoder(FFmpegParser):
     MPEG_CODEC = 5
     MPEG_DCPREC = 11
     VERSION = 0
-    
+
     def __init__(self, filename):
         super().__init__(filename)
-        assert self.format == 'h264', "must be raw h264 data. transcode with '.h264' suffix as output"
+        assert (
+            self.format == "h264"
+        ), "must be raw h264 data. transcode with '.h264' suffix as output"
+
+
 class MPEG1Encoder(FFmpegParser):
     MPEG_CODEC = 1
     MPEG_DCPREC = 11
     VERSION = 0
 
+
 class HCAEncoder(HCA):
     AUDIO_CODEC = 4
     METADATA_COUNT = 1
-    
-    filename : str
 
-    chnls : int
-    sampling_rate : int
-    total_samples : int
-    
+    filename: str
+
+    chnls: int
+    sampling_rate: int
+    total_samples: int
+
     avbps: int
-    
-    filesize : int
-    def __init__(self, stream, filename: str, key = 0, subkey = 0):
+
+    filesize: int
+
+    def __init__(self, stream, filename: str, key=0, subkey=0):
         self.filename = filename
         super().__init__(stream, key, subkey)
-        if self.filetype == 'wav':
+        if self.filetype == "wav":
             self.encode(
                 force_not_looping=True,
                 encrypt=key != 0,
@@ -622,9 +635,7 @@ class HCAEncoder(HCA):
             0,
             0,
         )
-        SFA_chunk += self.get_header().ljust(
-            self.hca["HeaderSize"] + padding, b"\x00"
-        )
+        SFA_chunk += self.get_header().ljust(self.hca["HeaderSize"] + padding, b"\x00")
         res = []
         res.append(SFA_chunk)
         for i, frame in enumerate(self.get_frames(), start=1):
@@ -648,15 +659,8 @@ class HCAEncoder(HCA):
                 0,
                 0,
             )
-            SFA_chunk += frame[1].ljust(
-                self.hca["FrameSize"] + padding, b"\x00"
-            )
-            current_interval = round(
-                i
-                * self.base_interval_per_SFA_chunk[
-                    i
-                ]
-            )
+            SFA_chunk += frame[1].ljust(self.hca["FrameSize"] + padding, b"\x00")
+            current_interval = round(i * self.base_interval_per_SFA_chunk[i])
             res.append(SFA_chunk)
         else:
             SFA_chunk = USMChunkHeader.pack(
@@ -675,42 +679,41 @@ class HCAEncoder(HCA):
                 0,
             )
             SFA_chunk += b"#CONTENTS END   ===============\x00"
-            res[-1] += SFA_chunk      
-        
-        return res  
-    
+            res[-1] += SFA_chunk
+
+        return res
+
     def get_metadata(self):
-        payload = [
-            dict(hca_header=(UTFTypeValues.bytes, self.get_header()))
-        ]
+        payload = [dict(hca_header=(UTFTypeValues.bytes, self.get_header()))]
         p = UTFBuilder(payload, table_name="AUDIO_HEADER")
-        p.strings = b"<NULL>\x00" + p.strings     
-        return p.bytes()   
-    
+        p.strings = b"<NULL>\x00" + p.strings
+        return p.bytes()
+
     @property
     def extra_hdrinfo(self):
         return {"ambisonics": (UTFTypeValues.uint, 0)}
 
-class USMBuilder(USMCrypt):
-    
-    enable_audio: bool
-    audio_streams: List[HCAEncoder]    
 
-    video_stream : VP9Encoder | H264Encoder | MPEG1Encoder
-    
+class USMBuilder(USMCrypt):
+
+    enable_audio: bool
+    audio_streams: List[HCAEncoder]
+
+    video_stream: VP9Encoder | H264Encoder | MPEG1Encoder
+
     key: int
     encrypt: bool
     encrypt_audio: bool
-        
+
     def __init__(
         self,
-        video : str,
+        video: str,
         audio: List[str] | str = None,
         key=False,
-        audio_codec = 'hca',
+        audio_codec="hca",
         encrypt_audio: bool = False,
     ) -> None:
-        """USM constructor, needs a video to build a USM."""        
+        """USM constructor, needs a video to build a USM."""
         self.audio_codec = audio_codec.lower()
         self.encrypt = False
         self.enable_audio = False
@@ -730,14 +733,17 @@ class USMBuilder(USMCrypt):
     def load_video(self, video):
         temp_stream = FFmpegParser(video)
         self.video_stream = None
-        match temp_stream.stream['codec_name']:
-            case 'h264':
+        match temp_stream.stream["codec_name"]:
+            case "h264":
                 self.video_stream = H264Encoder(video)
-            case 'vp9':
+            case "vp9":
                 self.video_stream = VP9Encoder(video)
-            case 'mpeg1video':
+            case "mpeg1video":
                 self.video_stream = MPEG1Encoder(video)
-        assert self.video_stream, "fail to match suitable video codec. Codec=%s" % temp_stream.stream['codec_name']
+        assert self.video_stream, (
+            "fail to match suitable video codec. Codec=%s"
+            % temp_stream.stream["codec_name"]
+        )
 
     def load_audio(self, audio):
         self.audio_filenames = []
@@ -762,8 +768,10 @@ class USMBuilder(USMCrypt):
                     if type(track) == str:
                         fn = os.path.basename(track)
                     else:
-                        fn = "{:02d}.sfa".format(count)                        
-                    hcaObj = HCAEncoder(track, fn, key=self.key if self.enable_audio else 0)
+                        fn = "{:02d}.sfa".format(count)
+                    hcaObj = HCAEncoder(
+                        track, fn, key=self.key if self.enable_audio else 0
+                    )
                     self.audio_streams.append(hcaObj)
             else:
                 if type(audio) == str:
@@ -772,18 +780,21 @@ class USMBuilder(USMCrypt):
                     fn = "00.sfa"
                 hcaObj = HCAEncoder(track, fn, key=self.key if self.enable_audio else 0)
                 self.audio_streams.append(hcaObj)
-        
-        assert self.audio_streams, "fail to match suitable audio codec given option: %s" % self.audio_codec
-    
-    def build(self) -> bytes:                
-        SFV_list = self.video_stream.generate_SFV(self)        
+
+        assert self.audio_streams, (
+            "fail to match suitable audio codec given option: %s" % self.audio_codec
+        )
+
+    def build(self) -> bytes:
+        SFV_list = self.video_stream.generate_SFV(self)
         if self.enable_audio:
-            SFA_chunks = [s.generate_SFA(self) for s in self.audio_streams]         
+            SFA_chunks = [s.generate_SFA(self) for s in self.audio_streams]
         else:
             SFA_chunks = []
-        SBT_chunks = [] # TODO: Subtitles       
-        header = self._build_header(SFV_list, SFA_chunks, SBT_chunks)        
+        SBT_chunks = []  # TODO: Subtitles
+        header = self._build_header(SFV_list, SFA_chunks, SBT_chunks)
         chunks = list(itertools.chain(SFV_list, *SFA_chunks))
+
         def chunk_key_sort(chunk):
             (
                 header,
@@ -803,14 +814,15 @@ class USMBuilder(USMCrypt):
             prio = 0 if header.decode() == "@SFV" else 1
             # all stream chunks before section_end chunks, then sort by frametime, with SFV chunks before SFA chunks
             return (type, frametime, prio)
-        chunks.sort(key=chunk_key_sort)
+
+        chunks.sort(key=chunk_key_sort)        
         self.usm = header
-        for chunk in chunks:
-            self.usm += chunk
+        chunks = b''.join(chunks)
+        self.usm += chunks
         return self.usm
 
     def _build_header(
-        self, SFV_list: list, SFA_chunks: list, SBT_chunks : list # TODO: Not used
+        self, SFV_list: list, SFA_chunks: list, SBT_chunks: list  # TODO: Not used
     ) -> bytes:
         # Main USM file
         CRIUSF_DIR_STREAM = [
@@ -818,7 +830,8 @@ class USMBuilder(USMCrypt):
                 fmtver=(UTFTypeValues.uint, self.video_stream.VERSION),
                 filename=(
                     UTFTypeValues.string,
-                    os.path.splitext(os.path.basename(self.video_stream.filename))[0] + '.usm'
+                    os.path.splitext(os.path.basename(self.video_stream.filename))[0]
+                    + ".usm",
                 ),
                 filesize=(UTFTypeValues.uint, -1),  # Will be updated later.
                 datasize=(UTFTypeValues.uint, 0),
@@ -833,11 +846,14 @@ class USMBuilder(USMCrypt):
         total_avbps = self.video_stream.avbps
         minbuf = 4 + self.video_stream.minbuf
 
-        v_filesize = self.video_stream.filesize        
+        v_filesize = self.video_stream.filesize
 
         video_dict = dict(
             fmtver=(UTFTypeValues.uint, self.video_stream.VERSION),
-            filename=(UTFTypeValues.string, os.path.basename(self.video_stream.filename)),
+            filename=(
+                UTFTypeValues.string,
+                os.path.basename(self.video_stream.filename),
+            ),
             filesize=(UTFTypeValues.uint, v_filesize),
             datasize=(UTFTypeValues.uint, 0),
             stmid=(
@@ -883,66 +899,69 @@ class USMBuilder(USMCrypt):
             minbuf,
         )  # Wrong. TODO Despite being fixed per SFA stream, seems to change internally before summation.
 
-        VIDEO_HDRINFO = [
-            {
-                "width": (UTFTypeValues.uint, self.video_stream.width),
-                "height": (UTFTypeValues.uint, self.video_stream.height),
-                "mat_width": (UTFTypeValues.uint, self.video_stream.width),
-                "mat_height": (UTFTypeValues.uint, self.video_stream.height),
-                "disp_width": (UTFTypeValues.uint, self.video_stream.width),
-                "disp_height": (UTFTypeValues.uint, self.video_stream.height),
-                "scrn_width": (UTFTypeValues.uint, 0),
-                "mpeg_dcprec": (UTFTypeValues.uchar, self.video_stream.MPEG_DCPREC),
-                "mpeg_codec": (UTFTypeValues.uchar, self.video_stream.MPEG_CODEC),
-                "alpha_type": (UTFTypeValues.uint, 0),
-                "total_frames": (UTFTypeValues.uint, self.video_stream.frame_count),
-                "framerate_n": (UTFTypeValues.uint, self.video_stream.framerate * 1000),
-                "framerate_d": (UTFTypeValues.uint, 1000), # Denominator
-                "metadata_count": (
-                    UTFTypeValues.uint,
-                    1,
-                ),  # Could be 0 and ignore metadata?
-                "metadata_size": (
-                    UTFTypeValues.uint,
-                    224,
-                ), 
-                "ixsize": (UTFTypeValues.uint, self.video_stream.minbuf),
-                "pre_padding": (UTFTypeValues.uint, 0),
-                "max_picture_size": (UTFTypeValues.uint, 0),
-                "color_space": (UTFTypeValues.uint, 0),
-                "picture_type": (UTFTypeValues.uint, 0),
-            }
-        ]
-        v = UTFBuilder(VIDEO_HDRINFO, table_name="VIDEO_HDRINFO")
-        v.strings = b"<NULL>\x00" + v.strings
-        VIDEO_HDRINFO = v.bytes()
-        padding = (
-            0x20 - (len(VIDEO_HDRINFO) % 0x20)
-            if (len(VIDEO_HDRINFO) % 0x20) != 0
-            else 0
-        )
-        chk = USMChunkHeader.pack(
-            USMChunckHeaderType.SFV.value,
-            len(VIDEO_HDRINFO) + 0x18 + padding,
-            0,
-            0x18,
-            padding,
-            0,
-            0,
-            0,
-            1,
-            0,
-            30,
-            0,
-            0,
-        )
-        chk += VIDEO_HDRINFO.ljust(len(VIDEO_HDRINFO) + padding, b"\x00")
-        VIDEO_HDRINFO = chk
+        def gen_video_hdr_info(metadata_size: int):
+            hdr = [
+                {
+                    "width": (UTFTypeValues.uint, self.video_stream.width),
+                    "height": (UTFTypeValues.uint, self.video_stream.height),
+                    "mat_width": (UTFTypeValues.uint, self.video_stream.width),
+                    "mat_height": (UTFTypeValues.uint, self.video_stream.height),
+                    "disp_width": (UTFTypeValues.uint, self.video_stream.width),
+                    "disp_height": (UTFTypeValues.uint, self.video_stream.height),
+                    "scrn_width": (UTFTypeValues.uint, 0),
+                    "mpeg_dcprec": (UTFTypeValues.uchar, self.video_stream.MPEG_DCPREC),
+                    "mpeg_codec": (UTFTypeValues.uchar, self.video_stream.MPEG_CODEC),
+                    "alpha_type": (UTFTypeValues.uint, 0),
+                    "total_frames": (UTFTypeValues.uint, self.video_stream.frame_count),
+                    "framerate_n": (
+                        UTFTypeValues.uint,
+                        self.video_stream.framerate * 1000,
+                    ),
+                    "framerate_d": (UTFTypeValues.uint, 1000),  # Denominator
+                    "metadata_count": (
+                        UTFTypeValues.uint,
+                        1,
+                    ),  # Could be 0 and ignore metadata?
+                    "metadata_size": (
+                        UTFTypeValues.uint,
+                        224,
+                    ),
+                    "ixsize": (UTFTypeValues.uint, self.video_stream.minbuf),
+                    "pre_padding": (UTFTypeValues.uint, 0),
+                    "max_picture_size": (UTFTypeValues.uint, 0),
+                    "color_space": (UTFTypeValues.uint, 0),
+                    "picture_type": (UTFTypeValues.uint, 0),
+                }
+            ]
+            v = UTFBuilder(hdr, table_name="VIDEO_HDRINFO")
+            v.strings = b"<NULL>\x00" + v.strings
+            hdr = v.bytes()
+            padding = 0x20 - (len(hdr) % 0x20) if (len(hdr) % 0x20) != 0 else 0
+            chk = USMChunkHeader.pack(
+                USMChunckHeaderType.SFV.value,
+                len(hdr) + 0x18 + padding,
+                0,
+                0x18,
+                padding,
+                0,
+                0,
+                0,
+                1,
+                0,
+                30,
+                0,
+                0,
+            )
+            chk += hdr.ljust(len(hdr) + padding, b"\x00")
+            return chk
+
+        VIDEO_HDRINFO = gen_video_hdr_info(0)  # will regen later
 
         audio_metadata = []
+        audio_headers = []
         if self.enable_audio:
             chno = 0
-            for stream in self.audio_streams:                    
+            for stream in self.audio_streams:
                 metadata = stream.get_metadata()
                 if not metadata:
                     audio_metadata.append(b"")
@@ -971,29 +990,19 @@ class USMBuilder(USMCrypt):
                     audio_metadata.append(chk)
                 chno += 1
 
-            audio_headers = []
             chno = 0
             for stream in self.audio_streams:
                 AUDIO_HDRINFO = [
                     {
-                        "audio_codec": (
-                            UTFTypeValues.uchar,
-                            stream.AUDIO_CODEC
-                        ),
+                        "audio_codec": (UTFTypeValues.uchar, stream.AUDIO_CODEC),
                         "ixsize": (UTFTypeValues.uint, 27860),
-                        "metadata_count": (
-                            UTFTypeValues.uint,
-                            stream.METADATA_COUNT
-                        ),
-                        "metadat_size": (
-                            UTFTypeValues.uint,
-                            len(audio_metadata[chno])
-                        ),
+                        "metadata_count": (UTFTypeValues.uint, stream.METADATA_COUNT),
+                        "metadat_size": (UTFTypeValues.uint, len(audio_metadata[chno])),
                         "num_channels": (UTFTypeValues.uchar, stream.chnls),
                         "sampling_rate": (UTFTypeValues.uint, stream.sampling_rate),
                         "total_samples": (UTFTypeValues.uint, stream.total_samples),
                     }
-                ]               
+                ]
                 if stream.extra_hdrinfo:
                     AUDIO_HDRINFO[0].update(stream.extra_hdrinfo)
                 p = UTFBuilder(AUDIO_HDRINFO, table_name="AUDIO_HDRINFO")
@@ -1021,7 +1030,12 @@ class USMBuilder(USMCrypt):
                 audio_headers.append(chk)
                 chno += 1
 
-        keyframes = [(data['pos'], i) for i, (frame, data, is_keyframe) in enumerate(self.video_stream.frames()) if is_keyframe]
+        keyframes = [
+            (data["pos"], i)
+            for i, (frame, data, is_keyframe) in enumerate(self.video_stream.frames())
+            if is_keyframe
+        ]
+
         def comp_seek_info(first_chk_ofs):
             seek = [
                 {
@@ -1029,14 +1043,13 @@ class USMBuilder(USMCrypt):
                     "ofs_frmid": (UTFTypeValues.int, i),
                     "num_skip": (UTFTypeValues.short, 0),
                     "resv": (UTFTypeValues.short, 0),
-                } for pos, i in keyframes
+                }
+                for pos, i in keyframes
             ]
             seek = UTFBuilder(seek, table_name="VIDEO_SEEKINFO")
             seek.strings = b"<NULL>\x00" + seek.strings
             seek = seek.bytes()
-            padding = (
-                0x20 - len(seek) % 0x20 if len(seek) % 0x20 != 0 else 0
-            )
+            padding = 0x20 - len(seek) % 0x20 if len(seek) % 0x20 != 0 else 0
             seekinf = USMChunkHeader.pack(
                 USMChunckHeaderType.SFV.value,
                 len(seek) + 0x18 + padding,
@@ -1054,6 +1067,7 @@ class USMBuilder(USMCrypt):
             )
             seekinf += seek.ljust(len(seek) + padding, b"\x00")
             return seekinf
+
         len_seek = len(comp_seek_info(0))
         first_chk_ofs = (
             0x800
@@ -1065,12 +1079,12 @@ class USMBuilder(USMCrypt):
                 0
                 if not self.enable_audio
                 else sum([len(x) + 0x40 for x in audio_headers])
-                + (
-                    sum([(len(x) + 0x40) if len(x) else 0 for x in audio_metadata])
-                )
+                + (sum([(len(x) + 0x40) if len(x) else 0 for x in audio_metadata]))
             )
-        )        
+        )
         VIDEO_SEEKINFO = comp_seek_info(first_chk_ofs)
+        VIDEO_HDRINFO = gen_video_hdr_info(len(VIDEO_SEEKINFO))
+
         total_len = sum([len(x) for x in SFV_list]) + first_chk_ofs
         if self.enable_audio:
             sum_len = 0
@@ -1155,7 +1169,6 @@ class USMBuilder(USMCrypt):
         if self.enable_audio:
             for chk in SFA_END:
                 header += chk
-
 
         header += VIDEO_SEEKINFO
 
