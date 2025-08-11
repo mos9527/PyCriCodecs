@@ -14,7 +14,7 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 
 ### ACB Cue sheets (also AWB)
 - [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecs/tree/main/Tests))
-### USM Sofdec2
+### USM Sofdec2 (Mux/Demux)
 #### Audio Stream
 - [ ] HCA (untested)
 #### Video Stream
