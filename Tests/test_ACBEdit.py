@@ -1,22 +1,26 @@
 from . import sample_file_path, temp_file_path
+def test_acb_edit():
+    WAV_sample = sample_file_path("WAV/44100_5s.wav")
+    ACB_sample = sample_file_path("ACB/0001_01.acb")
+    outfile = temp_file_path("0001_01.acb")
 
-WAV_sample = sample_file_path("WAV/44100_5s.wav")
-ACB_sample = sample_file_path("ACB/0001_01.acb")
-outfile = temp_file_path("0001_01.acb")
+    from PyCriCodecsEx.acb import ACB, ACBBuilder
+    from PyCriCodecsEx.awb import AWBBuilder
+    from PyCriCodecsEx.hca import HCA
 
-from PyCriCodecs.acb import ACB, ACBBuilder
-from PyCriCodecs.awb import AWBBuilder
-from PyCriCodecs.hca import HCA
+    src = ACB(ACB_sample)
+    awb = AWBBuilder([HCA(WAV_sample).encode()])
+    # Replace AWB waveform
+    src.view.AwbFile = awb.build()
+    # Rename the cue
+    src.view.CueNameTable[0].CueName = "The New Cue"
+    # Remove the last cue
+    src.view.CueTable.pop()
+    src.view.CueNameTable.pop()
+    # Build the binary again
+    build = ACBBuilder(src)
+    open(outfile, "wb").write(build.build())
+    print('Done.')
 
-src = ACB(ACB_sample)
-awb = AWBBuilder([HCA(WAV_sample).encode()])
-# Replace AWB waveform
-src.view.AwbFile = awb.build()
-# Rename the cue
-src.view.CueNameTable[0].CueName = "The New Cue"
-# Remove the last cue
-src.view.CueTable.pop()
-src.view.CueNameTable.pop()
-# Build the binary again
-build = ACBBuilder(src)
-open(outfile, "wb").write(build.build())
+if __name__ == "__main__":
+    test_acb_edit()

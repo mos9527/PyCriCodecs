@@ -1,5 +1,5 @@
-from PyCriCodecs import *
-from PyCriCodecs import UTFTypeValues as T
+from PyCriCodecsEx import *
+from PyCriCodecsEx import UTFTypeValues as T
 
 # Taken from Tests/ACB/0001_01.acb
 {

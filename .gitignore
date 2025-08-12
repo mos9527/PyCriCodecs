@@ -5,3 +5,5 @@ build/
 *.egg-info
 temp_*
 *.aprof
+*.pdb
+dist/
