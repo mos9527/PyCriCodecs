@@ -147,7 +147,8 @@ class USMCrypt:
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
 class FFmpegParser:
-
+    BASE_FRAMERATE = 2997
+    
     filename: str
     filesize: int
 
@@ -221,6 +222,7 @@ class FFmpegParser:
 
     def generate_SFV(self, builder: "USMBuilder"):
         v_framerate = int(self.framerate)
+        CHUNK_DT = self.BASE_FRAMERATE / self.framerate
         current_interval = 0
         #########################################
         # SFV chunks generator.
@@ -256,7 +258,7 @@ class FFmpegParser:
             SFV_chunk = SFV_chunk.ljust(datalen + 0x18 + padlen + 0x8, b"\x00")
             SFV_list.append(SFV_chunk)
             count += 1
-            current_interval = round(count / self.framerate, 1)
+            current_interval = round(count * CHUNK_DT, 1)            
             if is_keyframe:
                 self.minchk += 1
             if self.minbuf < datalen:
@@ -308,6 +310,8 @@ class MPEG1Codec(FFmpegParser):
         assert 'mp4' in self.format, "must be mp4 format."
 
 class HCACodec(HCA):
+    CHUNK_INTERVAL = 64
+    BASE_FRAMERATE = 2997 # dt = CHUNK_INTERVAL / BASE_FRAMERATE
     AUDIO_CODEC = 4
     METADATA_COUNT = 1
 
@@ -345,7 +349,7 @@ class HCACodec(HCA):
         # I don't know how this is derived so I am putting my best guess here. TODO
         self.avbps = int(self.filesize / self.chnls)
 
-    def generate_SFA(self, builder: "USMBuilder"):
+    def generate_SFA(self, index: int, builder: "USMBuilder"):
         current_interval = 0
         padding = (
             0x20 - (self.hca["HeaderSize"] % 0x20)
@@ -358,12 +362,12 @@ class HCACodec(HCA):
             0,
             0x18,
             padding,
-            i,
+            index,
             0,
             0,
             0,
             current_interval,
-            2997,
+            self.BASE_FRAMERATE,
             0,
             0,
         )
@@ -382,17 +386,17 @@ class HCACodec(HCA):
                 0,
                 0x18,
                 padding,
-                i,
+                index,
                 0,
                 0,
                 0,
                 current_interval,
-                2997,
+                self.BASE_FRAMERATE,
                 0,
                 0,
             )
             SFA_chunk += frame[1].ljust(self.hca["FrameSize"] + padding, b"\x00")
-            current_interval = round(i * self.base_interval_per_SFA_chunk[i])
+            current_interval = round(i * self.CHUNK_INTERVAL)            
             res.append(SFA_chunk)
         else:
             SFA_chunk = USMChunkHeader.pack(
@@ -401,7 +405,7 @@ class HCACodec(HCA):
                 0,
                 0x18,
                 0,
-                i,
+                index,
                 0,
                 0,
                 2,
@@ -689,33 +693,33 @@ class USMBuilder(USMCrypt):
                 self.audio_filenames.append("00.sfa")
 
         self.audio_streams = []
+        codec = None
         if self.audio_codec == "hca":
-            if type(audio) == list:
-                for track in audio:
-                    if type(track) == str:
-                        fn = os.path.basename(track)
-                    else:
-                        fn = "{:02d}.sfa".format(count)
-                    hcaObj = HCACodec(
-                        track, fn, key=self.key if self.enable_audio else 0
-                    )
-                    self.audio_streams.append(hcaObj)
-            else:
-                if type(audio) == str:
-                    fn = os.path.basename(audio)
-                else:
-                    fn = "00.sfa"
-                hcaObj = HCACodec(track, fn, key=self.key if self.enable_audio else 0)
-                self.audio_streams.append(hcaObj)
-
-        assert self.audio_streams, (
+            codec = HCACodec
+        assert codec, (
             "fail to match suitable audio codec given option: %s" % self.audio_codec
         )
+        if type(audio) == list:
+            for track in audio:
+                if type(track) == str:
+                    fn = os.path.basename(track)
+                else:
+                    fn = "{:02d}.sfa".format(count)
+                hcaObj = codec(track, fn, key=self.key)
+                self.audio_streams.append(hcaObj)
+        else:
+            if type(audio) == str:
+                fn = os.path.basename(audio)
+            else:
+                fn = "00.sfa"
+            hcaObj = codec(audio, fn, key=self.key)
+            self.audio_streams.append(hcaObj)
+
 
     def build(self) -> bytes:
         SFV_list = self.video_stream.generate_SFV(self)
         if self.enable_audio:
-            SFA_chunks = [s.generate_SFA(self) for s in self.audio_streams]
+            SFA_chunks = [s.generate_SFA(i, self) for i, s in enumerate(self.audio_streams) ]
         else:
             SFA_chunks = []
         SBT_chunks = []  # TODO: Subtitles
@@ -738,7 +742,7 @@ class USMBuilder(USMCrypt):
                 unk18,
                 unk1C,
             ) = USMChunkHeader.unpack(chunk[: USMChunkHeader.size])
-            prio = 0 if header.decode() == "@SFV" else 1
+            prio = 0 if header == USMChunckHeaderType.SFV else 1
             # all stream chunks before section_end chunks, then sort by frametime, with SFV chunks before SFA chunks
             return (type, frametime, prio)
 
@@ -805,11 +809,11 @@ class USMBuilder(USMCrypt):
                     filename=(UTFTypeValues.string, self.audio_filenames[chno]),
                     filesize=(UTFTypeValues.uint, stream.filesize),
                     datasize=(UTFTypeValues.uint, 0),
-                    chno=(UTFTypeValues.ushort, chno),
                     stmid=(
                         UTFTypeValues.uint,
                         int.from_bytes(USMChunckHeaderType.SFA.value, "big"),
                     ),
+                    chno=(UTFTypeValues.ushort, chno),
                     minchk=(UTFTypeValues.ushort, 1),
                     minbuf=(
                         UTFTypeValues.uint,
@@ -882,8 +886,6 @@ class USMBuilder(USMCrypt):
             chk += hdr.ljust(len(hdr) + padding, b"\x00")
             return chk
 
-        VIDEO_HDRINFO = gen_video_hdr_info(0)  # will regen later
-
         audio_metadata = []
         audio_headers = []
         if self.enable_audio:
@@ -922,12 +924,12 @@ class USMBuilder(USMCrypt):
                 AUDIO_HDRINFO = [
                     {
                         "audio_codec": (UTFTypeValues.uchar, stream.AUDIO_CODEC),
-                        "ixsize": (UTFTypeValues.uint, 27860),
-                        "metadata_count": (UTFTypeValues.uint, stream.METADATA_COUNT),
-                        "metadat_size": (UTFTypeValues.uint, len(audio_metadata[chno])),
-                        "num_channels": (UTFTypeValues.uchar, stream.chnls),
                         "sampling_rate": (UTFTypeValues.uint, stream.sampling_rate),
                         "total_samples": (UTFTypeValues.uint, stream.total_samples),
+                        "num_channels": (UTFTypeValues.uchar, stream.chnls),
+                        "metadata_count": (UTFTypeValues.uint, stream.METADATA_COUNT),
+                        "metadat_size": (UTFTypeValues.uint, len(audio_metadata[chno])),
+                        "ixsize": (UTFTypeValues.uint, 27860),
                     }
                 ]
                 if stream.extra_hdrinfo:
@@ -996,18 +998,15 @@ class USMBuilder(USMCrypt):
             return seekinf
 
         len_seek = len(comp_seek_info(0))
+        len_audio_headers = sum([len(x) + 0x40 for x in audio_headers])
+        len_audio_metadata = sum([len(x) + 0x40 for x in audio_metadata])
         first_chk_ofs = (
-            0x800
-            + len(VIDEO_HDRINFO)
+            0x800 # CRID
+            + 512 # VIDEO_HDRINFO
             + len_seek
-            + 0x40 * len(self.audio_streams)
-            + 128
-            + (
-                0
-                if not self.enable_audio
-                else sum([len(x) + 0x40 for x in audio_headers])
-                + (sum([(len(x) + 0x40) if len(x) else 0 for x in audio_metadata]))
-            )
+            + 128 # SFV_END * 2
+            + len_audio_headers
+            + len_audio_metadata
         )
         VIDEO_SEEKINFO = comp_seek_info(first_chk_ofs)
         VIDEO_HDRINFO = gen_video_hdr_info(len(VIDEO_SEEKINFO))
@@ -1054,27 +1053,7 @@ class USMBuilder(USMCrypt):
         # Header chunks
         header += VIDEO_HDRINFO
         if self.enable_audio:
-            SFA_END = []
-            count = 0
-            for chunk in audio_headers:
-                header += chunk
-                SFA_chk_END = USMChunkHeader.pack(
-                    USMChunckHeaderType.SFA.value,
-                    0x38,
-                    0,
-                    0x18,
-                    0x0,
-                    count,
-                    0x0,
-                    0x0,
-                    2,
-                    0,
-                    30,
-                    0,
-                    0,
-                )
-                SFA_END.append(SFA_chk_END + b"#HEADER END     ===============\x00")
-                count += 1
+            header += b''.join(audio_headers)            
         SFV_END = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
             0x38,
@@ -1091,28 +1070,18 @@ class USMBuilder(USMCrypt):
             0,
         )
         SFV_END += b"#HEADER END     ===============\x00"
-
         header += SFV_END
-        if self.enable_audio:
-            for chk in SFA_END:
-                header += chk
 
-        header += VIDEO_SEEKINFO
-
+        SFA_chk_END  = b'' # Maybe reused
         if self.enable_audio:
-            count = 0
-            metadata_end = []
-            for metadata in audio_metadata:
-                if not metadata:
-                    break
-                header += metadata
-                SFA_chk_END = USMChunkHeader.pack(
+            SFA_chk_END  = b''.join([
+                USMChunkHeader.pack(
                     USMChunckHeaderType.SFA.value,
                     0x38,
                     0,
                     0x18,
                     0x0,
-                    count,
+                    i,
                     0x0,
                     0x0,
                     2,
@@ -1120,11 +1089,13 @@ class USMBuilder(USMCrypt):
                     30,
                     0,
                     0,
-                )
-                metadata_end.append(
-                    SFA_chk_END + b"#METADATA END   ===============\x00"
-                )
-                count += 1
+                ) + b"#HEADER END     ===============\x00" for i in range(len(audio_headers))
+            ])
+        header += SFA_chk_END # Ends audio_headers
+        header += VIDEO_SEEKINFO
+
+        if self.enable_audio:
+            header += b''.join(audio_metadata)
         SFV_END = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
             0x38,
@@ -1143,8 +1114,24 @@ class USMBuilder(USMCrypt):
         SFV_END += b"#METADATA END   ===============\x00"
         header += SFV_END
 
-        if self.enable_audio and self.audio_codec == "hca":
-            for chk in metadata_end:
-                header += chk
+        if audio_metadata:
+            SFA_chk_END  = b''.join([
+                USMChunkHeader.pack(
+                    USMChunckHeaderType.SFA.value,
+                    0x38,
+                    0,
+                    0x18,
+                    0x0,
+                    i,
+                    0x0,
+                    0x0,
+                    2,
+                    0,
+                    30,
+                    0,
+                    0,
+                ) + b"#METADATA END   ===============\x00" for i in range(len(audio_headers))
+            ])
+            header += SFA_chk_END # Ends audio_headers
 
         return header

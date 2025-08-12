@@ -16,7 +16,7 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 - [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecs/tree/main/Tests))
 ### USM Sofdec2 (Mux/Demux)
 #### Audio Stream
-- [ ] HCA (untested)
+- [x] HCA
 #### Video Stream
 **NOTE**: You definitely want to tweak these encode settings a bit.
 
