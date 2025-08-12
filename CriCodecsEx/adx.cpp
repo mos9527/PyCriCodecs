@@ -515,16 +515,17 @@ struct ADX{
 };
 
 static PyObject* AdxEncode(PyObject* self, PyObject* args){
-    unsigned char* infilename;
-    Py_ssize_t infilename_size;
-    unsigned int blocksize;
+    unsigned char* infilename;        
     unsigned int bitdepth;
+    unsigned int blocksize;
     unsigned int encoding_ver;
     unsigned int highpass_freq;
     unsigned int filter;
     unsigned int adx_ver;
-    bool force_no_looping;
-    if(!PyArg_ParseTuple(args, "y#IIIIIIp", &infilename, &infilename_size, &bitdepth, &blocksize, &encoding_ver, &highpass_freq, &filter, &adx_ver, &force_no_looping)){
+    // bool force_no_looping;
+    // https://github.com/python/cpython/issues/123090
+    unsigned int force_no_looping = 0;
+    if(!PyArg_ParseTuple(args, "y*IIIIIII", &infilename, &bitdepth, &blocksize, &encoding_ver, &highpass_freq, &filter, &adx_ver, &force_no_looping)){
         return NULL;
     }
     ADX adx;
