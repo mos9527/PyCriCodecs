@@ -2,6 +2,7 @@ import os
 import itertools, shutil
 from typing import BinaryIO, List
 from io import FileIO, BytesIO
+from functools import cached_property
 
 from .chunk import *
 from .utf import UTF, UTFBuilder
@@ -147,8 +148,6 @@ class USMCrypt:
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
 class FFmpegParser:
-    BASE_FRAMERATE = 2997
-    
     filename: str
     filesize: int
 
@@ -168,7 +167,7 @@ class FFmpegParser:
             self.tempfile.close()
             self.filename = self.tempfile.name
         self.info = ffmpeg.probe(
-            self.filename, show_entries="packet=dts,pts_time,pos,flags"
+            self.filename, show_entries="packet=dts,pts_time,pos,flags,duration_time"
         )
         if type(stream) == str:
             self.file = open(self.filename, "rb")            
@@ -183,17 +182,29 @@ class FFmpegParser:
         return self.info["format"]["format_name"]
 
     @property
-    def stream(self):
+    def stream(self) -> dict:
         return self.info["streams"][0]
 
     @property
     def codec(self):
         return self.stream["codec_name"]
-
-    @property
+    
+    @cached_property
     def framerate(self):
-        num, denom = self.stream["r_frame_rate"].split("/")
-        return int(int(num) / int(denom))
+        """Running framerate (max frame rate)"""        
+        # Lesson learned. Do NOT trust the metadata.
+        # num, denom = self.stream["r_frame_rate"].split("/")
+        # return int(int(num) / int(denom))
+        return 1 / min((dt for _, _, _, dt in self.frames()))
+
+    @cached_property
+    def avg_framerate(self):
+        """Average framerate"""
+        # avg_frame_rate = self.stream.get("avg_frame_rate", None)
+        # if avg_frame_rate:
+        #     num, denom = avg_frame_rate.split("/")
+        #     return int(int(num) / int(denom))
+        return self.frame_count / sum((dt for _, _, _, dt in self.frames()))
 
     @property
     def packets(self):
@@ -212,28 +223,27 @@ class FFmpegParser:
         return len(self.packets)
 
     def frames(self):
-        """frame data, frame dict, is keyframe"""
+        """frame data, frame dict, is keyframe, duration"""
         offsets = [int(packet["pos"]) for packet in self.packets] + [self.filesize]
         for i, frame in enumerate(self.packets):
             frame_size = offsets[i + 1] - offsets[i]
             self.file.seek(offsets[i])
             raw_frame = self.file.read(frame_size)
-            yield raw_frame, frame, frame["flags"][0] == "K"
+            yield raw_frame, frame, frame["flags"][0] == "K", float(frame["duration_time"])
 
-    def generate_SFV(self, builder: "USMBuilder"):
+    def get_chunk_dt(self):
+        raise NotImplementedError # Implemented by subclasses
+
+    def generate_SFV(self, builder: "USMBuilder"):        
         v_framerate = int(self.framerate)
-        CHUNK_DT = self.BASE_FRAMERATE / self.framerate
         current_interval = 0
-        #########################################
-        # SFV chunks generator.
-        #########################################
         SFV_list = []
         SFV_chunk = b""
         count = 0
         self.minchk = 0
         self.minbuf = 0
         bitrate = 0
-        for data, _, is_keyframe in self.frames():
+        for data, _, is_keyframe, dt in self.frames():
             # SFV has priority in chunks, it comes first.
             datalen = len(data)
             padlen = 0x20 - (datalen % 0x20) if datalen % 0x20 != 0 else 0
@@ -258,7 +268,7 @@ class FFmpegParser:
             SFV_chunk = SFV_chunk.ljust(datalen + 0x18 + padlen + 0x8, b"\x00")
             SFV_list.append(SFV_chunk)
             count += 1
-            current_interval = round(count * CHUNK_DT, 1)            
+            current_interval += 2997 * dt # 29.97 as base
             if is_keyframe:
                 self.minchk += 1
             if self.minbuf < datalen:
@@ -288,7 +298,6 @@ class VP9Codec(FFmpegParser):
     def __init__(self, filename: str | bytes):
         super().__init__(filename)
         assert self.format == "ivf", "must be ivf format."
-
 class H264Codec(FFmpegParser):
     MPEG_CODEC = 5
     MPEG_DCPREC = 11
@@ -299,7 +308,6 @@ class H264Codec(FFmpegParser):
         assert (
             self.format == "h264"
         ), "must be raw h264 data. transcode with '.h264' suffix as output"
-
 class MPEG1Codec(FFmpegParser):
     MPEG_CODEC = 1
     MPEG_DCPREC = 11
@@ -308,6 +316,7 @@ class MPEG1Codec(FFmpegParser):
     def __init__(self, stream : str | bytes):
         super().__init__(stream)
         assert 'mp4' in self.format, "must be mp4 format."
+
 
 class HCACodec(HCA):
     CHUNK_INTERVAL = 64
@@ -523,7 +532,7 @@ class USM(USMCrypt):
                 framerate,
                 unk18,
                 unk1C,
-            ) = USMChunkHeader.unpack(self.stream.read(USMChunkHeader.size))
+            ) = USMChunkHeader.unpack(self.stream.read(USMChunkHeader.size))       
             chuncksize -= 0x18
             offset -= 0x18
             if header.decode() in headers:
@@ -846,7 +855,7 @@ class USMBuilder(USMCrypt):
                     "total_frames": (UTFTypeValues.uint, self.video_stream.frame_count),
                     "framerate_n": (
                         UTFTypeValues.uint,
-                        self.video_stream.framerate * 1000,
+                        int(self.video_stream.framerate * 1000),
                     ),
                     "framerate_d": (UTFTypeValues.uint, 1000),  # Denominator
                     "metadata_count": (
@@ -961,7 +970,7 @@ class USMBuilder(USMCrypt):
 
         keyframes = [
             (data["pos"], i)
-            for i, (frame, data, is_keyframe) in enumerate(self.video_stream.frames())
+            for i, (frame, data, is_keyframe, duration) in enumerate(self.video_stream.frames())
             if is_keyframe
         ]
 
