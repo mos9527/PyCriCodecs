@@ -31,10 +31,15 @@ class BuildExt(build_ext):
             ext.extra_compile_args.extend(compile_args)
             ext.extra_link_args.extend(link_args)
         return super().build_extensions()
+
+from PyCriCodecsEx import __version__
 setup(
     name="PyCriCodecsEx",
-    version="0.0.1",
+    version=__version__,
     description="Criware formats library for Python",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    url='https://github.com/mos9527/PyCriCodecsEx',
     packages=["PyCriCodecsEx"],
     ext_modules=[Extension(
         'CriCodecsEx',
@@ -52,6 +57,11 @@ setup(
             "PyCriCodecsEx-gui = PyCriCodecsEx.__gui__:__main__",
         ],
     },
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],    
     python_requires=">=3.10",
     cmdclass={
         'build_ext': BuildExt

@@ -1,10 +1,9 @@
-# PyCriCodecs
+# PyCriCodecsEx
 A continuation of @Youjose's work on Criware formats. Feautres are still in flux and subject to change. When in doubt, Refer to the [original repo](https://github.com/Youjose/PyCriCodecs) for more information.
 
 # Installation
-This is not available at PyPI yet. Meanwhile, you can install it manually from the source.
 ```bash
-pip install -U git+https://github.com/mos9527/PyCriCodecs.git
+pip install PyCriCodecsEx
 ```
 
 For USM features, you need `ffmpeg` installed and available in your PATH. See also https://github.com/kkroening/ffmpeg-python?tab=readme-ov-file#installing-ffmpeg
@@ -13,7 +12,7 @@ For USM features, you need `ffmpeg` installed and available in your PATH. See al
 If not otherwise mentioned, all features marked with [x] are considered working, and has been verified with official tools.
 
 ### ACB Cue sheets (also AWB)
-- [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecs/tree/main/Tests))
+- [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecsEx/tree/main/Tests))
 ### USM Sofdec2 (Encode & Decode)
 #### Audio Stream
 For audio to be muxed in, you need a PCM WAV sample with NO metadata, which can be produced with e.g.:
@@ -42,7 +41,7 @@ Decoding and Encoded format can be the following:
 - [x] Packing
 
 ## Roadmap
-- [ ] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecs/blob/main/Research/ACBSchema.py)
+- [ ] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecsEx/blob/main/Research/ACBSchema.py)
 - [ ] Interface for encode tasks (CLI then maybe GUI?)
 - [ ] Documentation
 - [ ] C/C++ port + FFI
@@ -54,6 +53,6 @@ Decoding and Encoded format can be the following:
 
 # Credits
 - https://github.com/Youjose/PyCriCodecs
-- https://github.com/Mikewando/PyCriCodecs ([PR#1 on USM](https://github.com/mos9527/PyCriCodecs/pull/1))
+- https://github.com/Mikewando/PyCriCodecs ([PR#1 on USM](https://github.com/mos9527/PyCriCodecsEx/pull/1))
 - https://github.com/donmai-me/WannaCRI
 - https://github.com/vgmstream/vgmstream
