@@ -312,6 +312,7 @@ class MPEG1Codec(FFmpegCodec):
 
     def __init__(self, stream : str | bytes):
         super().__init__(stream)
+        assert self.format == "mpegvideo", "must be m1v format (mpegvideo)."
 
 class HCACodec(HCA):
     CHUNK_INTERVAL = 64
@@ -501,6 +502,8 @@ class ADXCodec(ADX):
                     datalen = (stream_size - (self.AdxDataOffset + 4) - chunk_size) % chunk_size
             else:
                 datalen = self.AdxDataOffset + 4
+            if not datalen:
+                break
             padding = (0x20 - (datalen % 0x20) if datalen % 0x20 != 0 else 0)
             SFA_chunk = USMChunkHeader.pack(
                     USMChunckHeaderType.SFA.value,
@@ -523,24 +526,24 @@ class ADXCodec(ADX):
             SFA_chunk += chunk_data.ljust(datalen + padding, b"\x00")            
             current_interval += self.CHUNK_INTERVAL
             res.append(SFA_chunk)
-        else:
-            SFA_chunk = USMChunkHeader.pack(
-                        USMChunckHeaderType.SFA.value,
-                        0x38,
-                        0,
-                        0x18,
-                        0,
-                        index,
-                        0,
-                        0,
-                        2,
-                        0,
-                        30,
-                        0,
-                        0
-                        )
-            SFA_chunk += b"#CONTENTS END   ===============\x00"
-            res[-1] += SFA_chunk
+        # ---
+        SFA_chunk = USMChunkHeader.pack(
+                    USMChunckHeaderType.SFA.value,
+                    0x38,
+                    0,
+                    0x18,
+                    0,
+                    index,
+                    0,
+                    0,
+                    2,
+                    0,
+                    30,
+                    0,
+                    0
+                    )
+        SFA_chunk += b"#CONTENTS END   ===============\x00"
+        res[-1] += SFA_chunk
         return res
 
     def get_metadata(self):
@@ -758,7 +761,7 @@ class USMBuilder(USMCrypt):
 
         Args:
             video (str): The path to the video file. The video source format will be used to map accordingly to the ones Sofdec use.
-                - MPEG1 (with MP4 container): MPEG1 Codec (Sofdec Prime)
+                - MPEG1 (with M1V container): MPEG1 Codec (Sofdec Prime)
                 - H264 (with H264 container): H264 Codec
                 - VP9 (with IVF container): VP9 Codec
             audio (List[str] | str, optional): The path(s) to the audio file(s). Defaults to None.

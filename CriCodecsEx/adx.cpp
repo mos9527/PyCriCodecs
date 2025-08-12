@@ -407,8 +407,7 @@ struct ADX{
             if(*(data+BaseOffset) == 0x80 && *(data+BaseOffset+1) == 0x01)
                 break; /* EOF Scale. */
             
-            for(unsigned int j = 0; j < Header.Channels; j++, BaseOffset += Header.BlockSize){
-                printf("Read channel=%d, Block=%d, BaseOffset=%d\n", j, i, BaseOffset);
+            for(unsigned int j = 0; j < Header.Channels; j++, BaseOffset += Header.BlockSize){                
                 int Scale = ReadUnsignedShortBE(data+BaseOffset);
                 Reader.SetBuffer(data+BaseOffset+2, DataBlockSize);
                 Channels[j].Decode(Reader, Scale, SamplesPerBlock, Coefficients, Header);

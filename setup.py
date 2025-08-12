@@ -34,7 +34,7 @@ class BuildExt(build_ext):
 setup(
     name="PyCriCodecsEx",
     version="0.0.1",
-    description="Python frontend with a C++ backend of managing Criware files of all kinds.",
+    description="Criware formats library for Python",
     packages=["PyCriCodecsEx"],
     ext_modules=[Extension(
         'CriCodecsEx',

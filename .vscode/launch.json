@@ -33,39 +33,25 @@
         },
         
         {
-            "name": "Test: ACBEdit",
+            "name": "Test: ACB",
             "type": "debugpy",
             "request": "launch",
-            "module": "Tests.test_ACBEdit",
+            "module": "Tests.test_ACB",
             "justMyCode": false
         },    
         {
-            "name": "Test: USMBuild",
+            "name": "Test: USM",
             "type": "debugpy",
             "request": "launch",
-            "module": "Tests.test_USMBuild",
-            "justMyCode": false
-        },    
-        {
-            "name": "Test: USMDecode",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "Tests.test_USMDecode",
+            "module": "Tests.test_USM",
             "justMyCode": false
         },
         {
-            "name": "Test: CPK Unpack",
+            "name": "Test: CPK",
             "type": "debugpy",
             "request": "launch",
-            "module": "Tests.test_CPKUnpack",
+            "module": "Tests.test_CPK",
             "justMyCode": false
-        },
-        {
-            "name": "Test: CPK Build",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "Tests.test_CPKBuild",
-            "justMyCode": false
-        },        
+        },   
     ]
 }

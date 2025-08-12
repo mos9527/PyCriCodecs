@@ -16,12 +16,17 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 - [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecs/tree/main/Tests))
 ### USM Sofdec2 (Encode & Decode)
 #### Audio Stream
+For audio to be muxed in, you need a PCM WAV sample with NO metadata, which can be produced with e.g.:
+```bash
+ffmpeg -i input.mp3 -vn -c:a pcm_s16le -map_metadata -1 output.wav
+```
+Decoding and Encoded format can be the following:
 - [x] HCA
 - [x] ADX
 #### Video Stream
 **NOTE**: You definitely want to tweak these encode settings a bit.
-- [x] Sofdec Prime (MPEG1, from `.mp4` container)
-    - Prepare source file with: `ffmpeg -i <input_file> -c:v mpeg1video -an <output_file>.mp4`
+- [x] Sofdec Prime (MPEG1, from `.m1v` container)
+    - Prepare source file with: `ffmpeg -i <input_file> -c:v mpeg1video -an <output_file>.m1v`
 - [x] H264 (from `.h264` raw container)
     - Prepare source file with: `ffmpeg -i <input_file> -c:v libx264 -an <output_file>.h264`
 - [x] VP9 (from `.ivf` container)
