@@ -50,43 +50,14 @@ class AWB:
             self.headersize = self.headersize + (self.align - (self.headersize % self.align))
         self.stream.seek(self.headersize, 0)
 
-    def extract(self, decode=False, key=0):
-        """ Extracts the files. """
-        count = 0
-        for i in self.getfiles():
-            # Apparently AWB's can have many types of files, focusing on HCA's here though. So TODO.
-            if self.filename:
-                if i.startswith(HCAType.HCA.value) or i.startswith(HCAType.EHCA.value):
-                    if decode:
-                        filename = self.filename.rsplit(".", 1)[0] + "_" + str(count) + ".wav"
-                    else:
-                        filename = self.filename.rsplit(".", 1)[0] + "_" + str(count) + ".hca"
-                else:
-                    # Probably ADX.
-                    filename = self.filename.rsplit(".", 1)[0] + "_" + str(count) + ".dat"
-                    open(filename, "wb").write(i)
-                    count += 1
-                    continue
-                open(filename, "wb").write(i if not decode else HCA(i, key=key, subkey=self.subkey).decode())
-                count += 1
-            else:
-                if i.startswith(HCAType.HCA.value) or i.startswith(HCAType.EHCA.value):
-                    if decode:
-                        open(str(count)+".wav", "wb").write(HCA(i, key=key, subkey=self.subkey).decode())
-                    else:
-                        open(str(count)+".hca", "wb").write(i)
-                else:
-                    open(str(count)+".dat", "wb").write(i)
-                count += 1
-
-    def getfiles(self):
-        """ Generator function to yield data from an AWB. """
+    def get_files(self):
+        """ Generator function to yield all data blobs from an AWB. """
         for i in range(1, len(self.ofs)):
             data = self.stream.read((self.ofs[i]-self.ofs[i-1]))
             self.stream.seek(self.ofs[i], 0)
             yield data
     
-    def getfile_atindex(self, index):
+    def get_file_at(self, index):
         """ Gets you a file at specific index. """
         index += 1
         self.stream.seek(self.ofs[index], 0)
@@ -107,7 +78,6 @@ class AWB:
             raise ValueError("Unknown int size.")
 
 class AWBBuilder:
-    """ Use this class to build any AWB of any kind given a directory with files. """
     def __init__(self, infiles: list[bytes], subkey: int = 0, version: int = 2, id_intsize = 0x2, align: int = 0x20) -> None:
         if version == 1 and subkey != 0:
             raise ValueError("Cannot have a subkey with AWB version of 1.")

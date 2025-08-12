@@ -33,8 +33,8 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 - [x] Decoding
 - [x] Encoding
 ### CPK
-- [ ] Unpacking (untested)
-- [ ] Packing (untested)
+- [x] Unpacking
+- [x] Packing
 
 ## Roadmap
 - [ ] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecs/blob/main/Research/ACBSchema.py)

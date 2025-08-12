@@ -26,11 +26,18 @@
             "justMyCode": false
         },
         {
-            "name": "Test: CPK",
+            "name": "Test: CPK Unpack",
             "type": "debugpy",
             "request": "launch",
-            "module": "Tests.test_CPK",
+            "module": "Tests.test_CPKUnpack",
             "justMyCode": false
         },
+        {
+            "name": "Test: CPK Build",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_CPKBuild",
+            "justMyCode": false
+        },        
     ]
 }
