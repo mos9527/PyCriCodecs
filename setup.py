@@ -47,16 +47,7 @@ setup(
         include_dirs=[os.path.abspath("CriCodecsEx")],
         depends=[os.path.join('CriCodecsEx',f) for f in os.listdir("CriCodecsEx")]
     )],
-    install_requires=[
-        'ffmpeg-python'
-    ],
-    extras_require={"gui": ["GooeyEx>=0.0.8"]},
-    entry_points={
-        "console_scripts": [
-            "PyCriCodecsEx = PyCriCodecsEx.__main__:__main__",
-            "PyCriCodecsEx-gui = PyCriCodecsEx.__gui__:__main__",
-        ],
-    },
+    extras_require={'usm': ['ffmpeg-python']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

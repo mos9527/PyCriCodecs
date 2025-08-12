@@ -8,8 +8,11 @@ from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder
 from PyCriCodecsEx.adx import ADX
 from PyCriCodecsEx.hca import HCA
-
-import ffmpeg, tempfile
+try:
+    import ffmpeg
+except ImportError:
+    raise ImportError("ffmpeg-python is required for USM support. Install via PyCriCodecsEx[usm] extra.")
+import tempfile
 
 # Big thanks and credit for k0lb3 and 9th helping me write this specific code.
 # Also credit for the original C++ code from Nyagamon/bnnm.
