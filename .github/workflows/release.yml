@@ -87,7 +87,7 @@ jobs:
           CIBW_SKIP: "*aarch64 *ppc64le *s390x *armv7l *-manylinux*"
           CIBW_TEST_SKIP: "*"
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           path: ./wheelhouse/*.whl
 

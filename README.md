@@ -56,3 +56,4 @@ Decoding and Encoded format can be the following:
 - https://github.com/Mikewando/PyCriCodecs ([PR#1 on USM](https://github.com/mos9527/PyCriCodecsEx/pull/1))
 - https://github.com/donmai-me/WannaCRI
 - https://github.com/vgmstream/vgmstream
+- https://github.com/K0lb3/astc-encoder-py (For CI script reference)
