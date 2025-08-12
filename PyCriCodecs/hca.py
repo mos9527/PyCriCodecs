@@ -18,11 +18,6 @@ HcaCiphHeaderStruct = Struct(">4sH")
 HcaRvaHeaderStruct = Struct(">4sf")
 
 class HCA:
-    __slots__ = ["stream", "HcaSig", "version", "header_size", "key", "subkey", "hca", "filetype", "wavbytes",
-                "riffSignature", "riffSize", "wave", "fmt", "fmtSize", "fmtType", "fmtChannelCount", "hcastream", 
-                "fmtSamplingRate", "fmtSamplesPerSec", "fmtSamplingSize", "fmtBitCount", "dataSig", "dataSize", "Flags",
-                "AlignmentSamples", "LoopCount", "LoopNum", "LoopType", "LoopStartSample", "LoopStartByte", "LoopEndSample", 
-                "LoopEndByte", "looping", "hcabytes", "encrypted", "enc_table", "table"]
     stream: BinaryIO
     hcastream: BinaryIO
     HcaSig: bytes

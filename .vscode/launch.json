@@ -1,0 +1,43 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Test: ACBEdit",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_ACBEdit",
+            "justMyCode": false
+        },    
+        {
+            "name": "Test: USMBuild",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_USMBuild",
+            "justMyCode": false
+        },    
+        {
+            "name": "Test: USMDecode",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_USMDecode",
+            "justMyCode": false
+        },
+        {
+            "name": "Test: CPK Unpack",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_CPKUnpack",
+            "justMyCode": false
+        },
+        {
+            "name": "Test: CPK Build",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.test_CPKBuild",
+            "justMyCode": false
+        },        
+    ]
+}

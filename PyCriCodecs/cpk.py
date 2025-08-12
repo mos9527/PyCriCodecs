@@ -1,12 +1,37 @@
+import os
 from typing import BinaryIO
 from io import BytesIO, FileIO
-import os
 from .chunk import *
 from .utf import UTF, UTFBuilder
+from dataclasses import dataclass
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tempfile import NamedTemporaryFile
 import CriCodecs
 
-class TOC():
-    __slots__ = ["magic", "encflag", "packet_size", "unk0C", "stream", "table"]
+def worker_do_compression(src : str, dst: str):
+    with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+        data = fsrc.read()
+        compressed = CriCodecs.CriLaylaCompress(data)
+        fdst.write(compressed)
+@dataclass
+class _PackFile():
+    stream: BinaryIO
+    path: str
+    offset: int   
+    size : int 
+    compressed : bool = False
+
+    def get_bytes(self) -> bytes:
+        self.stream.seek(self.offset)
+        data = self.stream.read(self.size)
+        if self.compressed:
+            data = CriCodecs.CriLaylaDecompress(data)
+        return data
+
+    def save(self, path : str):
+        with open(path, "wb") as f:
+            f.write(self.get_bytes())
+class _TOC():
     magic: bytes
     encflag: int
     packet_size: int
@@ -23,7 +48,6 @@ class TOC():
         self.table = UTF(self.stream.read()).table
 
 class CPK:
-    __slots__ = ["magic", "encflag", "packet_size", "unk0C", "stream", "tables", "filename"]
     magic: bytes
     encflag: int
     packet_size: int
@@ -44,18 +68,18 @@ class CPK:
         if self.magic != CPKChunkHeaderType.CPK.value:
             raise ValueError("Invalid CPK file.")
         self.tables = dict(CPK = UTF(self.stream.read(0x800-CPKChunkHeader.size)).table)
-        self.checkTocs()
+        self._load_tocs()
     
-    def checkTocs(self) -> None:
+    def _load_tocs(self) -> None:
         for key, value in self.tables["CPK"].items():
             if key == "TocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["TOC"] = TOC(self.stream.read(self.tables['CPK']["TocSize"][0])).table
+                    self.tables["TOC"] = _TOC(self.stream.read(self.tables['CPK']["TocSize"][0])).table
             elif key == "ItocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["ITOC"] = TOC(self.stream.read(self.tables['CPK']["ItocSize"][0])).table
+                    self.tables["ITOC"] = _TOC(self.stream.read(self.tables['CPK']["ItocSize"][0])).table
                     if "DataL" in self.tables["ITOC"]:
                         self.tables["ITOC"]['DataL'][0] = UTF(self.tables["ITOC"]['DataL'][0]).table
                     if "DataH" in self.tables["ITOC"]:
@@ -63,11 +87,11 @@ class CPK:
             elif key == "HtocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["HTOC"] = TOC(self.stream.read(self.tables['CPK']["HtocSize"][0])).table
+                    self.tables["HTOC"] = _TOC(self.stream.read(self.tables['CPK']["HtocSize"][0])).table
             elif key == "GtocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["GTOC"] = TOC(self.stream.read(self.tables['CPK']["GtocSize"][0])).table
+                    self.tables["GTOC"] = _TOC(self.stream.read(self.tables['CPK']["GtocSize"][0])).table
                     if "AttrData" in self.tables["GTOC"]:
                         self.tables["GTOC"]['AttrData'][0] = UTF(self.tables["GTOC"]['AttrData'][0]).table
                     if "Fdata" in self.tables["GTOC"]:
@@ -77,32 +101,42 @@ class CPK:
             elif key == "HgtocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["HGTOC"] = TOC(self.stream.read(self.tables['CPK']["HgtocSize"][0])).table
+                    self.tables["HGTOC"] = _TOC(self.stream.read(self.tables['CPK']["HgtocSize"][0])).table
             elif key == "EtocOffset":
                 if value[0]:
                     self.stream.seek(value[0], 0)
-                    self.tables["ETOC"] = TOC(self.stream.read(self.tables['CPK']["EtocSize"][0])).table
+                    self.tables["ETOC"] = _TOC(self.stream.read(self.tables['CPK']["EtocSize"][0])).table
     
-    def extract(self):
+    @property
+    def mode(self):
+        TOC, ITOC, GTOC = 'TOC' in self.tables, 'ITOC' in self.tables, 'GTOC' in self.tables
+        if TOC and ITOC and GTOC:
+            return 3
+        elif TOC and ITOC:
+            return 2
+        elif TOC:
+            return 1
+        elif ITOC:
+            return 0
+        raise ValueError("Unknown CPK mode.")
+
+    @property
+    def files(self):
+        """Retrieves a list of all files in the CPK archive."""
         if "TOC" in self.tables:
             toctable = self.tables['TOC']
             rel_off = 0x800
             for i in range(len(toctable['FileName'])):
-                if toctable["DirName"][i%len(toctable["DirName"])] == '':
-                    dirname = self.filename.rsplit(".")[0]
-                else:
-                    dirname = os.path.join(self.filename.rsplit(".")[0], toctable["DirName"][i%len(toctable["DirName"])])
-                os.makedirs(dirname, exist_ok=True)
+                dirname = toctable["DirName"][i%len(toctable["DirName"])] 
                 filename = toctable['FileName'][i]
                 if len(filename) >= 255:
                     filename = filename[:250] + "_" + str(i) # 250 because i might be 4 digits long.
                 if toctable['ExtractSize'][i] > toctable['FileSize'][i]:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    comp_data = self.stream.read(toctable['FileSize'][i])
-                    open(os.path.join(dirname, filename), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                    yield _PackFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i], compressed=True)
                 else:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    open(os.path.join(dirname, filename), "wb").write(self.stream.read(toctable['FileSize'][i]))
+                    yield _PackFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i])                    
         elif "ITOC" in self.tables:
             toctableL = self.tables["ITOC"]['DataL'][0]
             toctableH = self.tables["ITOC"]['DataH'][0]
@@ -110,109 +144,28 @@ class CPK:
             offset = self.tables["CPK"]["ContentOffset"][0]
             files = self.tables["CPK"]["Files"][0]
             self.stream.seek(offset, 0)
-            if self.filename:
-                dirname = self.filename.rsplit(".")[0]
-                os.makedirs(dirname, exist_ok=True)
-            else:
-                dirname = ""
             for i in sorted(toctableH['ID']+toctableL['ID']):
                 if i in toctableH['ID']:
                     idx = toctableH['ID'].index(i)
                     if toctableH['ExtractSize'][idx] > toctableH['FileSize'][idx]:
-                        comp_data = self.stream.read(toctableH['FileSize'][idx])
-                        open(os.path.join(dirname, str(i)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx], compressed=True)
                     else:
-                        open(os.path.join(dirname, str(i)), "wb").write(self.stream.read(toctableH['FileSize'][idx]))
+                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx])
                     if toctableH['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableH['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
                 elif i in toctableL['ID']:
                     idx = toctableL['ID'].index(i)
                     if toctableL['ExtractSize'][idx] > toctableL['FileSize'][idx]:
-                        comp_data = self.stream.read(toctableL['FileSize'][idx])
-                        open(os.path.join(dirname, str(i)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx], compressed=True)
                     else:
-                        open(os.path.join(dirname, str(i)), "wb").write(self.stream.read(toctableL['FileSize'][idx]))
+                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx])
                     if toctableL['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableL['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
-                
-    def extract_file(self, filename):
-        if "TOC" in self.tables:
-            toctable = self.tables['TOC']
-            rel_off = 0x800
-            if toctable["DirName"][0] == '':
-                dirname = self.filename.rsplit(".")[0]
-            else:
-                dirname = os.path.join(self.filename.rsplit(".")[0], toctable["DirName"][0])
-            if self.filename:
-                os.makedirs(dirname, exist_ok=True)
-            if filename not in toctable['FileName']:
-                raise ValueError("Given filename does not exist inside the provided CPK.")
-            idx = toctable['FileName'].index(filename)
-            offset = rel_off+toctable["FileOffset"][idx]
-            size = toctable['FileSize'][idx]
-            self.stream.seek(offset, 0)
-            open(os.path.join(dirname, filename), "wb").write(self.stream.read(size))
-        elif "ITOC" in self.tables:
-            filename = int(filename)
-            toctableL = self.tables["ITOC"]['DataL'][0]
-            toctableH = self.tables["ITOC"]['DataH'][0]
-            alignmentsize = self.tables["CPK"]["Align"][0]
-            files = self.tables["CPK"]["Files"][0]
-            offset = self.tables["CPK"]["ContentOffset"][0]
-            if filename in toctableL['ID']:
-                idxg = toctableL['ID'].index(filename)
-            elif filename in toctableH['ID']:
-                idxg = toctableH['ID'].index(filename)
-            else:
-                raise ValueError("Given ID does not exist in the given CPK.")
-            self.stream.seek(offset, 0)
-            realOffset = offset
-            for i in sorted(toctableH['ID']+toctableL['ID']):
-                if i != filename:
-                    if i in toctableH["ID"]:
-                        idx = toctableH['ID'].index(i)
-                        realOffset += toctableH["FileSize"][idx]
-                        if toctableH["FileSize"][idx] % alignmentsize != 0:
-                            realOffset += (alignmentsize - toctableH["FileSize"][idx] % alignmentsize)
-                    elif i in toctableL["ID"]:
-                        idx = toctableL['ID'].index(i)
-                        realOffset += toctableH["FileSize"][idx]
-                        if toctableL["FileSize"][idx] % alignmentsize != 0:
-                            realOffset += (alignmentsize - toctableL["FileSize"][idx] % alignmentsize)
-                else:
-                    if self.filename:
-                        dirname = self.filename.rsplit(".")[0]
-                        os.makedirs(dirname)
-                    else:
-                        dirname = ""
-                    if filename in toctableH["ID"]:
-                        extractsz = toctableH['ExtractSize'][idxg]
-                        flsize = toctableH['FileSize'][idxg]
-                        if extractsz > flsize:
-                            self.stream.seek(realOffset)
-                            comp_data = self.stream.read(toctableH['FileSize'][idxg])
-                            open(os.path.join(dirname, str(filename)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
-                        else:
-                            open(os.path.join(dirname, str(filename)), "wb").write(self.stream.read(toctableH['FileSize'][idxg]))
-                    else:
-                        extractsz = toctableL['ExtractSize'][idxg]
-                        flsize = toctableL['FileSize'][idxg]
-                        if extractsz > flsize:
-                            self.stream.seek(realOffset)
-                            comp_data = self.stream.read(toctableL['FileSize'][idxg])
-                            open(os.path.join(dirname, str(filename)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
-                        else:
-                            open(os.path.join(dirname, str(filename)), "wb").write(self.stream.read(toctableL['FileSize'][idxg]))
-                    break
-
 class CPKBuilder:
     """ Use this class to build semi-custom CPK archives. """
-    __slots__ = ["CpkMode", "Tver", "dirname", "itoc_size", "encrypt", "encoding", "files", "fileslen",
-                "ITOCdata", "CPKdata", "ContentSize", "EnabledDataSize", "outfile", "TOCdata", "GTOCdata",
-                "ETOCdata", "compress", "EnabledPackedSize", "init_toc_len"]
-    CpkMode: int 
+    mode: int 
     # CPK mode dictates (at least from what I saw) the use of filenames in TOC or the use of
     # ITOC without any filenames (Use of ID's only, will be sorted).
     # CPK mode of 0 = Use of ITOC only, CPK mode = 1, use of TOC, ITOC and optionally ETOC?
@@ -224,7 +177,6 @@ class CPKBuilder:
     itoc_size: int
     encrypt: bool
     encoding: str
-    files: list
     fileslen: int
     ITOCdata: bytearray
     TOCdata: bytearray
@@ -233,109 +185,182 @@ class CPKBuilder:
     EnabledDataSize: int
     EnabledPackedSize: int
     outfile: str
-    compress: bool
     init_toc_len: int # This is a bit of a redundancy, but some CPK's need it.
 
-    def __init__(self, dirname: str, outfile: str, CpkMode: int = 1, Tver: str = False, encrypt: bool = False, encoding: str = "utf-8", compress: bool = False) -> None:
-        self.CpkMode = CpkMode
-        self.compress = False
+    in_files : list[tuple[str, str, bool]] # (source path, dest filename, compress or not)
+    os_files : list[tuple[str, bool]] # (os path, temp or not)
+    files: list[tuple[str, int, int]] # (filename, file size, compressed file size).
+    
+    progress_cb : callable # Progress callback taking (task name, current, total)
+    
+    def __init__(self, mode: int = 1, Tver: str = None, encrypt: bool = False, encoding: str = "utf-8", progress_cb : callable = None) -> None:
+        """Setup CPK file building
+
+        Args:
+            mode (int, optional): CPK mode. 0: ID Only (ITOC), 1: Name Only (TOC), 2: Name + ID (ITOC + TOC), 3: Name + ID + GTOC (GTOC). Defaults to 1.
+            Tver (str, optional): CPK version. Defaults to None.
+            encrypt (bool, optional): Enable encryption. Defaults to False.
+            encoding (str, optional): Filename encoding. Defaults to "utf-8".
+            progress_cb (callable, optional): Progress callback taking (task name, current, total). Defaults to None.
+        """                
+        self.progress_cb = progress_cb
+        if not self.progress_cb:
+            self.progress_cb = lambda task_name, current, total: None
+        self.mode = mode
         if not Tver:
             # Some default ones I found with the matching CpkMode, hope they are good enough for all cases.
-            if self.CpkMode == 0:
+            if self.mode == 0:
                 self.Tver = 'CPKMC2.18.04, DLL2.78.04'
-            elif self.CpkMode == 1:
+            elif self.mode == 1:
                 self.Tver = 'CPKMC2.45.00, DLL3.15.00'
-            elif self.CpkMode == 2:
+            elif self.mode == 2:
                 self.Tver = 'CPKMC2.49.32, DLL3.24.00'
-            elif self.CpkMode == 3:
+            elif self.mode == 3:
                 self.Tver = 'CPKFBSTD1.49.35, DLL3.24.00'
             else:
                 raise ValueError("Unknown CpkMode.")
         else:
             self.Tver = Tver
-        if dirname == "":
-            raise ValueError("Invalid directory name/path.")
-        elif self.CpkMode not in [0, 1, 2, 3]:
+        if self.mode not in [0, 1, 2, 3]:
             raise ValueError("Unknown CpkMode.")
-        elif self.CpkMode == 0 and self.compress:
-            # CpkMode of 0 is a bit hard to do with compression, as I don't know where the actual data would be
-            # categorized (either H or L) after compression. Needs proper testing for me to implement.
-            raise NotImplementedError("CpkMode of 0 with compression is not supported yet.")
-        self.dirname = dirname
+
         self.encrypt = encrypt
         self.encoding = encoding
         self.EnabledDataSize = 0
         self.EnabledPackedSize = 0
         self.ContentSize = 0
+        self.in_files = []
+        self.os_files = []
+
+    def add_file(self, src : str, dst : str = None, compress=False):
+        """Add a file to the bundle.
+        
+        Args:
+            src (str): The source file path.
+            dst (str): The destination full file name (containing directory). Can be None in ITOC Mode. Defaults to None.
+            compress (bool, optional): Whether to compress the file. Defaults to False.
+        
+        NOTE: 
+            - In ITOC-related mode, the insertion order determines the final integer ID of the files.
+            - Compression can be VERY slow with high entropy files (e.g. encoded media). Use at discretion.
+        """
+        if not dst and self.mode != 0:
+            raise ValueError("Destination filename must be specified in non-ITOC mode.")
+        
+        self.in_files.append((src, dst, compress))
+
+    def _writetofile(self, header) -> None:
+        with open(self.outfile, "wb") as out:
+            out.write(header)
+            for i, ((path, _), (filename, file_size, pack_size)) in enumerate(zip(self.os_files, self.files)):
+                src = open(path, 'rb').read()
+                out.write(src)
+                out.write(bytes(0x800 - pack_size % 0x800))
+                self.progress_cb("Write %s" % os.path.basename(filename), i + 1, len(self.files))
+
+    def _populate_files(self, parallel : bool):
+        self.files = []
+        for src, dst, compress in self.in_files:
+            if compress:
+                tmp = NamedTemporaryFile(delete=False)
+                self.os_files.append((tmp.name, True))
+            else:
+                self.os_files.append((src, False))
+        if parallel:
+            with ProcessPoolExecutor() as exec:
+                futures = []
+                for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
+                    if compress:
+                        futures.append(exec.submit(worker_do_compression, src, dst))
+                for i, fut in as_completed(futures):
+                    try:
+                        fut.result()
+                    except:
+                        pass
+                    self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(futures))
+        else:
+            for i, ((src, _, _), (dst, compress)) in enumerate(zip(self.in_files,self.os_files)):
+                    if compress:
+                        worker_do_compression(src, dst)
+                        self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(self.in_files))
+        for (src, filename, _) , (dst, _) in zip(self.in_files,self.os_files):
+            file_size = os.stat(src).st_size         
+            pack_size = os.stat(dst).st_size
+            self.files.append((filename, file_size, pack_size))
+
+    def _cleanup_files(self):
+        self.files = []
+        for path, is_temp in self.os_files:
+            if not is_temp:
+                continue
+            try:                
+                os.unlink(path)
+            except:
+                pass
+        self.os_files = []
+
+    def save(self, outfile : str, parallel : bool = False):
+        """Build and save the bundle into a file
+
+
+        Args:
+            outfile (str): The output file path.
+            parallel (bool, optional): Whether to use parallel processing for file compression (if at all used). Defaults to False.
+
+        NOTE: 
+            - Temporary files may be created during the process if compression is used.
+            - parallel uses multiprocessing. Make sure your main function is guarded with `if __name__ == '__main__'` clause.
+        """
+        assert self.in_files, "cannot save empty bundle"
         self.outfile = outfile
-        self.compress = compress
-        self.generate_payload()
-    
-    def generate_payload(self):
+        self._populate_files(parallel)
         if self.encrypt:
             encflag = 0
         else:
             encflag = 0xFF
-        if self.CpkMode == 3:
-            self.TOCdata = self.generate_TOC()
+        data = None
+        if self.mode == 3:
+            self.TOCdata = self._generate_TOC()
             self.TOCdata = bytearray(CPKChunkHeader.pack(b'TOC ', encflag, len(self.TOCdata), 0)) + self.TOCdata
             self.TOCdata = self.TOCdata.ljust(len(self.TOCdata) + (0x800 - len(self.TOCdata) % 0x800), b'\x00')
             assert self.init_toc_len == len(self.TOCdata)
-            self.GTOCdata = self.generate_GTOC()
+            self.GTOCdata = self._generate_GTOC()
             self.GTOCdata = bytearray(CPKChunkHeader.pack(b'GTOC', encflag, len(self.GTOCdata), 0)) + self.GTOCdata
             self.GTOCdata = self.GTOCdata.ljust(len(self.GTOCdata) + (0x800 - len(self.GTOCdata) % 0x800), b'\x00')
-            self.CPKdata = self.generate_CPK()
+            self.CPKdata = self._generate_CPK()
             self.CPKdata = bytearray(CPKChunkHeader.pack(b'CPK ', encflag, len(self.CPKdata), 0)) + self.CPKdata
             data = self.CPKdata.ljust(len(self.CPKdata) + (0x800 - len(self.CPKdata) % 0x800) - 6, b'\x00') + bytearray(b"(c)CRI") + self.TOCdata + self.GTOCdata
-            self.writetofile(data)
-        elif self.CpkMode == 2:
-            self.TOCdata = self.generate_TOC()
+        elif self.mode == 2:
+            self.TOCdata = self._generate_TOC()
             self.TOCdata = bytearray(CPKChunkHeader.pack(b'TOC ', encflag, len(self.TOCdata), 0)) + self.TOCdata
             self.TOCdata = self.TOCdata.ljust(len(self.TOCdata) + (0x800 - len(self.TOCdata) % 0x800), b'\x00')
             assert self.init_toc_len == len(self.TOCdata)
-            self.ITOCdata = self.generate_ITOC()
+            self.ITOCdata = self._generate_ITOC()
             self.ITOCdata = bytearray(CPKChunkHeader.pack(b'ITOC', encflag, len(self.ITOCdata), 0)) + self.ITOCdata
             self.ITOCdata = self.ITOCdata.ljust(len(self.ITOCdata) + (0x800 - len(self.ITOCdata) % 0x800), b'\x00')
-            self.CPKdata = self.generate_CPK()
+            self.CPKdata = self._generate_CPK()
             self.CPKdata = bytearray(CPKChunkHeader.pack(b'CPK ', encflag, len(self.CPKdata), 0)) + self.CPKdata
             data = self.CPKdata.ljust(len(self.CPKdata) + (0x800 - len(self.CPKdata) % 0x800) - 6, b'\x00') + bytearray(b"(c)CRI") + self.TOCdata + self.ITOCdata
-            self.writetofile(data)
-        elif self.CpkMode == 1:
-            self.TOCdata = self.generate_TOC()
+        elif self.mode == 1:
+            self.TOCdata = self._generate_TOC()
             self.TOCdata = bytearray(CPKChunkHeader.pack(b'TOC ', encflag, len(self.TOCdata), 0)) + self.TOCdata
             self.TOCdata = self.TOCdata.ljust(len(self.TOCdata) + (0x800 - len(self.TOCdata) % 0x800), b'\x00')
             assert self.init_toc_len == len(self.TOCdata)
-            self.CPKdata = self.generate_CPK()
+            self.CPKdata = self._generate_CPK()
             self.CPKdata = bytearray(CPKChunkHeader.pack(b'CPK ', encflag, len(self.CPKdata), 0)) + self.CPKdata
             data = self.CPKdata.ljust(len(self.CPKdata) + (0x800 - len(self.CPKdata) % 0x800) - 6, b'\x00') + bytearray(b"(c)CRI") + self.TOCdata
-            self.writetofile(data)
-        elif self.CpkMode == 0:
-            self.ITOCdata = self.generate_ITOC()
+        elif self.mode == 0:
+            self.ITOCdata = self._generate_ITOC()
             self.ITOCdata = bytearray(CPKChunkHeader.pack(b'ITOC', encflag, len(self.ITOCdata), 0)) + self.ITOCdata
             self.ITOCdata = self.ITOCdata.ljust(len(self.ITOCdata) + (0x800 - len(self.ITOCdata) % 0x800), b'\x00')
-            self.CPKdata = self.generate_CPK()
+            self.CPKdata = self._generate_CPK()
             self.CPKdata = bytearray(CPKChunkHeader.pack(b'CPK ', encflag, len(self.CPKdata), 0)) + self.CPKdata
             data = self.CPKdata.ljust(len(self.CPKdata) + (0x800 - len(self.CPKdata) % 0x800) - 6, b'\x00') + bytearray(b"(c)CRI") + self.ITOCdata
-            self.writetofile(data)
-        
-    def writetofile(self, data) -> None:
-        out = open(self.outfile, "wb")
-        out.write(data)
-        if self.compress:
-            for d in self.files:
-                if len(d) % 0x800 != 0:
-                    d = d.ljust(len(d) + (0x800 - len(d) % 0x800), b"\x00")
-                out.write(d)
-            out.close()
-        else:
-            for i in self.files:
-                d = open(i, "rb").read()
-                if len(d) % 0x800 != 0:
-                    d = d.ljust(len(d) + (0x800 - len(d) % 0x800), b"\x00")
-                out.write(d)
-            out.close()
+        self._writetofile(data)
+        self._cleanup_files()
     
-    def generate_GTOC(self) -> bytearray:
+    def _generate_GTOC(self) -> bytearray:
+        # NOTE: Practically useless
         # I have no idea why are those numbers here.
         Gdata = [
             {
@@ -382,48 +407,32 @@ class CPKBuilder:
                 "Glink": (UTFTypeValues.uint, 2),
                 "Flink": (UTFTypeValues.uint, 3),
                 "Attr" : (UTFTypeValues.uint, 1),
-                "Gdata": (UTFTypeValues.bytes, UTFBuilder(Gdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocGlink").parse()),
-                "Fdata": (UTFTypeValues.bytes, UTFBuilder(Fdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocFlink").parse()),
-                "Attrdata": (UTFTypeValues.bytes, UTFBuilder(Attrdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocAttr").parse()),
+                "Gdata": (UTFTypeValues.bytes, UTFBuilder(Gdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocGlink").bytes()),
+                "Fdata": (UTFTypeValues.bytes, UTFBuilder(Fdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocFlink").bytes()),
+                "Attrdata": (UTFTypeValues.bytes, UTFBuilder(Attrdata, encrypt=False, encoding=self.encoding, table_name="CpkGtocAttr").bytes()),
             }
         ]
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkGtocInfo").parse()
+        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkGtocInfo").bytes()
 
-    def generate_ETOC(self) -> bytearray:
-        """ This is now unused, a CPK won't be unfuctional without it. I will leave it here for reference. """
-        payload = [
-            {
-                "UpdateDateTime": (UTFTypeValues.ullong, 0),
-                "LocalDir": (UTFTypeValues.string, self.dirname)
-            }
-        ]
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkEtocInfo").parse()
-
-    def generate_TOC(self) -> bytearray:
-        payload = []
-        self.files = []
-        temp = []
-        self.get_files(sorted(os.listdir(self.dirname), key=lambda x: "".join([s if s != '_' else "~" for s in x]).lower()), self.dirname)
+    def _generate_TOC(self) -> bytearray:
+        payload = []        
+        temp = []        
         count = 0
         lent = 0
         switch = False
         sf = set()
         sd = set()
-        for i in self.files:
+        for filename, store_size, full_size in self.files:
             # Dirname management.
-            dirname = os.path.dirname(i.split(self.dirname)[1])
-            if dirname.startswith(os.sep) or dirname.startswith("\\"):
-                dirname = dirname[1:]
-            if "\\" in dirname or os.sep in dirname:
-                dirname = dirname.replace("\\", "/")
-                dirname = dirname.replace(os.sep, "/")
+            # Must be POSIX path
+            dirname = os.path.dirname(filename)
             if dirname not in sd:
                 switch = True
                 lent += len(dirname) + 1
                 sd.update({dirname})
             
             # Filename management.
-            flname = os.path.basename(i)
+            flname = os.path.basename(filename)
             if flname not in sf:
                 lent += len(flname) + 1
                 sf.update({flname})
@@ -444,65 +453,93 @@ class CPKBuilder:
 
         self.fileslen = count
         count = 0
-        for file in self.files:
-            sz = os.stat(file).st_size
-            fz = sz
+        for filename, store_size, full_size in self.files:
+            sz = store_size
+            fz = full_size
             if sz > 0xFFFFFFFF:
                 raise OverflowError("4GBs is the max size of a single file that can be bundled in a CPK archive of mode 1.")
-            if self.compress:
-                self.EnabledPackedSize += sz
-                comp_data = CriCodecs.CriLaylaCompress(open(file, "rb").read())
-                temp.append(comp_data)
-                fz = len(comp_data)
-                self.EnabledDataSize += fz
-                if fz % 0x800 != 0:
-                    self.ContentSize += fz + (0x800 - fz % 0x800)
-                else:
-                    self.ContentSize += fz
+            self.EnabledDataSize += fz
+            self.EnabledPackedSize += sz
+            if sz % 0x800 != 0:
+                self.ContentSize += sz + (0x800 - sz % 0x800)
             else:
-                self.EnabledDataSize += sz
-                self.EnabledPackedSize += sz
-                if sz % 0x800 != 0:
-                    self.ContentSize += sz + (0x800 - sz % 0x800)
-                else:
-                    self.ContentSize += sz
-            dirname = os.path.dirname(file.split(self.dirname)[1])
-            if dirname.startswith(os.sep) or dirname.startswith("\\"):
-                dirname = dirname[1:]
-            if "\\" in dirname or os.sep in dirname:
-                dirname = dirname.replace("\\", "/")
-                dirname = dirname.replace(os.sep, "/")
+                self.ContentSize += sz
+            dirname = os.path.dirname(filename)
             payload.append(
                 {
                     "DirName": (UTFTypeValues.string, dirname),
-                    "FileName": (UTFTypeValues.string, os.path.basename(file)),
+                    "FileName": (UTFTypeValues.string, os.path.basename(filename)),
                     "FileSize": (UTFTypeValues.uint, sz),
-                    "ExtractSize": (UTFTypeValues.uint, (sz if not self.compress else fz)),
+                    "ExtractSize": (UTFTypeValues.uint, fz),
                     "FileOffset": (UTFTypeValues.ullong, lent),
                     "ID": (UTFTypeValues.uint, count),
                     "UserString": (UTFTypeValues.string, "<NULL>")
                 }
             )
             count += 1
-            sz = fz
             if sz % 0x800 != 0:
                 lent += sz + (0x800 - sz % 0x800)
             else:
                 lent += sz
-        if self.compress:
-            self.files = temp
-        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkTocInfo").parse()
+        return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkTocInfo").bytes()
 
-    def get_files(self, lyst, root):
-        for i in lyst:
-            name = os.path.join(root, i)
-            if os.path.isdir(name):
-                self.get_files(sorted(os.listdir(name), key=lambda x: "".join([s if s != '_' else "~" for s in x]).lower()), name)
-            else:
-                self.files.append(name)
-
-    def generate_CPK(self) -> bytearray:
-        if self.CpkMode == 3:
+    def _generate_ITOC(self) -> bytearray:
+        if self.mode == 2:
+            payload = []
+            for i, (filename, store_size, full_size) in enumerate(self.files):
+                payload.append(
+                    {
+                        "ID": (UTFTypeValues.int, i),
+                        "TocIndex": (UTFTypeValues.int, i)
+                    }
+                )
+            return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkExtendId").bytes()
+        else:
+            assert len(self.files) < 65535, "ITOC requires less than 65535 files."
+            self.fileslen = len(self.files)
+            datal = []
+            datah = []
+            for i, (filename, store_size, full_size) in enumerate(self.files):
+                sz = store_size
+                fz = full_size
+                self.EnabledDataSize += fz
+                self.EnabledPackedSize += sz
+                if sz % 0x800 != 0:
+                    self.ContentSize += sz + (0x800 - sz % 0x800)
+                else:
+                    self.ContentSize += sz
+                if sz > 0xFFFF:
+                    dicth = {
+                        "ID": (UTFTypeValues.ushort, i),
+                        "FileSize": (UTFTypeValues.uint, sz),
+                        "ExtractSize": (UTFTypeValues.uint, sz)
+                    }
+                    datah.append(dicth)
+                else:
+                    dictl = {
+                        "ID": (UTFTypeValues.ushort, i),
+                        "FileSize": (UTFTypeValues.ushort, sz),
+                        "ExtractSize": (UTFTypeValues.ushort, sz)
+                    }
+                    datal.append(dictl)
+            datallen = len(datal)
+            datahlen = len(datah)
+            if len(datal) == 0:
+                datal.append({"ID": (UTFTypeValues.ushort, 0), "FileSize": (UTFTypeValues.ushort, 0), "ExtractSize": (UTFTypeValues.ushort, 0)})
+            elif len(datah) == 0:
+                datah.append({"ID": (UTFTypeValues.uint, 0), "FileSize": (UTFTypeValues.uint, 0), "ExtractSize": (UTFTypeValues.uint, 0)})
+            payload = [
+                {
+                   "FilesL" : (UTFTypeValues.uint, datallen),
+                   "FilesH" : (UTFTypeValues.uint, datahlen),
+                   "DataL" : (UTFTypeValues.bytes, UTFBuilder(datal, table_name="CpkItocL", encrypt=False, encoding=self.encoding).bytes()),
+                   "DataH" : (UTFTypeValues.bytes, UTFBuilder(datah, table_name="CpkItocH", encrypt=False, encoding=self.encoding).bytes())
+                }
+            ]
+            return UTFBuilder(payload, table_name="CpkItocInfo", encrypt=self.encrypt, encoding=self.encoding).bytes()
+        
+    def _generate_CPK(self) -> bytearray:
+        if self.mode == 3:
             ContentOffset = (0x800+len(self.TOCdata)+len(self.GTOCdata))
             CpkHeader = [
                 {
@@ -525,7 +562,7 @@ class CPKBuilder:
                     "Align": (UTFTypeValues.ushort, 0x800),
                     "Sorted": (UTFTypeValues.ushort, 1),
                     "EnableFileName": (UTFTypeValues.ushort, 1),
-                    "CpkMode": (UTFTypeValues.uint, self.CpkMode),
+                    "CpkMode": (UTFTypeValues.uint, self.mode),
                     "Tvers": (UTFTypeValues.string, self.Tver),
                     "Codec": (UTFTypeValues.uint, 0),
                     "DpkItoc": (UTFTypeValues.uint, 0),
@@ -552,7 +589,7 @@ class CPKBuilder:
                     "Comment": (UTFTypeValues.string, '<NULL>'),
                 }
             ]
-        elif self.CpkMode == 2:
+        elif self.mode == 2:
             ContentOffset = 0x800+len(self.TOCdata)+len(self.ITOCdata)
             CpkHeader = [
                 {
@@ -576,7 +613,7 @@ class CPKBuilder:
                     "Sorted": (UTFTypeValues.ushort, 1),
                     "EnableFileName": (UTFTypeValues.ushort, 1),
                     "EID": (UTFTypeValues.ushort, None),
-                    "CpkMode": (UTFTypeValues.uint, self.CpkMode),
+                    "CpkMode": (UTFTypeValues.uint, self.mode),
                     "Tvers": (UTFTypeValues.string, self.Tver),
                     "Codec": (UTFTypeValues.uint, 0),
                     "DpkItoc": (UTFTypeValues.uint, 0),
@@ -601,7 +638,7 @@ class CPKBuilder:
                     "Comment": (UTFTypeValues.string, '<NULL>'),
                 }
             ]
-        elif self.CpkMode == 1:
+        elif self.mode == 1:
             ContentOffset = 0x800 + len(self.TOCdata)
             CpkHeader = [
                 {
@@ -635,7 +672,7 @@ class CPKBuilder:
                     "Align": (UTFTypeValues.ushort, 0x800),
                     "Sorted": (UTFTypeValues.ushort, 1),
                     "EID": (UTFTypeValues.ushort, None),
-                    "CpkMode": (UTFTypeValues.uint, self.CpkMode),
+                    "CpkMode": (UTFTypeValues.uint, self.mode),
                     "Tvers": (UTFTypeValues.string, self.Tver),
                     "Comment": (UTFTypeValues.string, '<NULL>'),
                     "Codec": (UTFTypeValues.uint, 0),
@@ -651,7 +688,7 @@ class CPKBuilder:
                     "HgtocSize": (UTFTypeValues.ullong, None),
                 }
             ]
-        elif self.CpkMode == 0:
+        elif self.mode == 0:
             CpkHeader = [
                 {
                     "UpdateDateTime": (UTFTypeValues.ullong, 0),
@@ -669,7 +706,7 @@ class CPKBuilder:
                     "Align": (UTFTypeValues.ushort, 0x800),
                     "Sorted": (UTFTypeValues.ushort, 0),
                     "EID": (UTFTypeValues.ushort, None),
-                    "CpkMode": (UTFTypeValues.uint, self.CpkMode),
+                    "CpkMode": (UTFTypeValues.uint, self.mode),
                     "Tvers": (UTFTypeValues.string, self.Tver),
                     "Codec": (UTFTypeValues.uint, 0),
                     "DpkItoc": (UTFTypeValues.uint, 0),
@@ -691,66 +728,5 @@ class CPKBuilder:
                     "Comment": (UTFTypeValues.string, '<NULL>'),
                 }
             ]
-        return UTFBuilder(CpkHeader, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkHeader").parse()
+        return UTFBuilder(CpkHeader, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkHeader").bytes()
     
-    def generate_ITOC(self) -> bytearray:
-        if self.CpkMode == 2:
-            payload = []
-            for i in range(len(self.files)):
-                payload.append(
-                    {
-                        "ID": (UTFTypeValues.int, i),
-                        "TocIndex": (UTFTypeValues.int, i)
-                    }
-                )
-            return UTFBuilder(payload, encrypt=self.encrypt, encoding=self.encoding, table_name="CpkExtendId").parse()
-        else:
-            try:
-                files = sorted(os.listdir(self.dirname), key=int)
-            except:
-                raise ValueError("CpkMode of 0 requires filenames to be integers.")
-            self.files = [os.path.join(self.dirname, i) for i in files]
-            if len(files) == 0:
-                raise ValueError("No files are present in the given directory.")
-            elif len(files) > 0xFFFF:
-                raise OverflowError("CpkMode of 0 can only contain 65535 files at max.")
-            self.fileslen = len(files)
-            datal = []
-            datah = []
-            for i in files:
-                sz = os.stat(os.path.join(self.dirname, i)).st_size
-                self.EnabledDataSize += sz
-                if sz % 0x800 != 0:
-                    self.ContentSize += sz + (0x800 - sz % 0x800)
-                else:
-                    self.ContentSize += sz
-                if sz > 0xFFFF:
-                    dicth = {
-                        "ID": (UTFTypeValues.ushort, int(i)),
-                        "FileSize": (UTFTypeValues.uint, sz),
-                        "ExtractSize": (UTFTypeValues.uint, sz)
-                    }
-                    datah.append(dicth)
-                else:
-                    dictl = {
-                        "ID": (UTFTypeValues.ushort, int(i)),
-                        "FileSize": (UTFTypeValues.ushort, sz),
-                        "ExtractSize": (UTFTypeValues.ushort, sz)
-                    }
-                    datal.append(dictl)
-            datallen = len(datal)
-            datahlen = len(datah)
-            self.EnabledPackedSize = self.EnabledDataSize
-            if len(datal) == 0:
-                datal.append({"ID": (UTFTypeValues.ushort, 0), "FileSize": (UTFTypeValues.ushort, 0), "ExtractSize": (UTFTypeValues.ushort, 0)})
-            elif len(datah) == 0:
-                datah.append({"ID": (UTFTypeValues.uint, 0), "FileSize": (UTFTypeValues.uint, 0), "ExtractSize": (UTFTypeValues.uint, 0)})
-            payload = [
-                {
-                   "FilesL" : (UTFTypeValues.uint, datallen),
-                   "FilesH" : (UTFTypeValues.uint, datahlen),
-                   "DataL" : (UTFTypeValues.bytes, UTFBuilder(datal, table_name="CpkItocL", encrypt=False, encoding=self.encoding).parse()),
-                   "DataH" : (UTFTypeValues.bytes, UTFBuilder(datah, table_name="CpkItocH", encrypt=False, encoding=self.encoding).parse())
-                }
-            ]
-            return UTFBuilder(payload, table_name="CpkItocInfo", encrypt=self.encrypt, encoding=self.encoding).parse()

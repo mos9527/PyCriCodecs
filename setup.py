@@ -11,5 +11,8 @@ setup(
         [os.path.join("CriCodecs", "CriCodecs.cpp")],
         include_dirs=[os.path.realpath("CriCodecs")],
         extra_compile_args=["-std=c++11", "-O3"]
-        )]
+        )],
+    requires=[
+        'ffmpeg-python'
+    ]
 )
