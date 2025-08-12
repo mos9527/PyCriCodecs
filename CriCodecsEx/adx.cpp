@@ -377,7 +377,7 @@ struct ADX{
         for(unsigned int i = 0; i < 7; i++)
             WriteChar(AdxData+HeaderSize+i-6, CRIString[i]);
     }
-    char Decode(unsigned char*& data, PCM& wav){
+    char Decode(unsigned char*& data, unsigned int size, PCM& wav){
         AdxErrorCode = loadHeader(data);
         if(AdxErrorCode < 0)
             return AdxErrorCode;
@@ -402,10 +402,13 @@ struct ADX{
             Channels[i].data = PCMData+i;
 
         for(unsigned int i = 0; i < Blocks; i++){
+            if (BaseOffset + Header.BlockSize * Header.Channels > size)
+                break; /* Actual EOF. Can happen with crafted or corrupt files */
             if(*(data+BaseOffset) == 0x80 && *(data+BaseOffset+1) == 0x01)
                 break; /* EOF Scale. */
             
             for(unsigned int j = 0; j < Header.Channels; j++, BaseOffset += Header.BlockSize){
+                printf("Read channel=%d, Block=%d, BaseOffset=%d\n", j, i, BaseOffset);
                 int Scale = ReadUnsignedShortBE(data+BaseOffset);
                 Reader.SetBuffer(data+BaseOffset+2, DataBlockSize);
                 Channels[j].Decode(Reader, Scale, SamplesPerBlock, Coefficients, Header);
@@ -509,8 +512,8 @@ struct ADX{
         AdxErrorCode = Encode(PCMMain, ADXData, BitDepth, BlockSize, EncodingMode, HighpassFrequency, Filter, AdxVersion, ForceNoLooping);
         return ADXData;
     }
-    void GetWAVE(unsigned char* data, PCM &PCMObject){
-        AdxErrorCode = Decode(data, PCMObject);
+    void GetWAVE(unsigned char* data, unsigned int size, PCM &PCMObject){
+        AdxErrorCode = Decode(data, size, PCMObject);
     }
 };
 
@@ -545,10 +548,11 @@ static PyObject* AdxEncode(PyObject* self, PyObject* args){
 }
 
 static PyObject* AdxDecode(PyObject* self, PyObject* args){
-    unsigned char* data = (unsigned char *)PyBytes_AsString(args);
+    unsigned char* data = (unsigned char*)PyBytes_AsString(args);
+    Py_ssize_t size = PyBytes_Size(args);
     ADX adx;
     PCM wav;
-    adx.GetWAVE(data, wav);
+    adx.GetWAVE(data, size, wav);
     if(AdxErrorCode){
         PyAdxSetError(AdxErrorCode);
         return NULL;

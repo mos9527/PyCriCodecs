@@ -2,7 +2,7 @@ from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 import os
 
-ENV_DEBUG = True #  os.environ.get('CRICODECSEX_DEBUG', None)   
+ENV_DEBUG = os.environ.get('CRICODECSEX_DEBUG', None)   
 
 CriCodecsEx_sources = ["CriCodecsEx.cpp"]
 CriCodecsEx_sources = [os.path.join("CriCodecsEx", source) for source in CriCodecsEx_sources]
@@ -21,7 +21,10 @@ class BuildExt(build_ext):
         else:
             compile_args = ['-std=c++14']
             if ENV_DEBUG:
-                compile_args += ['-O0', '-g']
+                # ASAN on Linux
+                # This only works with GCC - you also need to specify 
+                # LD_PRELOAD=$(gcc -print-file-name=libasan.so)
+                compile_args += ['-O0', '-g', '-fsanitize=address']
             else:
                 compile_args += ['-O2']
         for ext in self.extensions:

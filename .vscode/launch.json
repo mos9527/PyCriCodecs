@@ -8,7 +8,7 @@
             "name": "(gdb) Launch USMDecode",
             "type": "cppdbg",
             "request": "launch",
-            "program": "valgrind /opt/miniconda3/bin/python",
+            "program": "/opt/miniconda3/bin/python",
             "args": [
                 "-m",
                 "Tests.test_USMDecode"
