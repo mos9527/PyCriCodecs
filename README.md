@@ -14,14 +14,12 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 
 ### ACB Cue sheets (also AWB)
 - [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecs/tree/main/Tests))
-### USM Sofdec2 (Mux/Demux)
+### USM Sofdec2 (Encode & Decode)
 #### Audio Stream
 - [x] HCA
-- [ ] ADX
-
+- [x] ADX
 #### Video Stream
 **NOTE**: You definitely want to tweak these encode settings a bit.
-
 - [x] Sofdec Prime (MPEG1, from `.mp4` container)
     - Prepare source file with: `ffmpeg -i <input_file> -c:v mpeg1video -an <output_file>.mp4`
 - [x] H264 (from `.h264` raw container)
