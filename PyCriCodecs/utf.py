@@ -272,16 +272,19 @@ class UTF:
 
     @property
     def table(self) -> dict:
-        """Returns a dictionary representation of the UTF table."""
+        """Returns a dictionary representation of the UTF table.
+
+        Effectively, this retrieves a transposed version of the dictarray. Whilst discarding
+        type info.
+
+        This is mostly here for cpk.py compatibility.
+        """
         keys = self._dictarray[0].keys()
-        return {key: [d[key] for d in self._dictarray] for key in keys}
+        return {key: [d[key][1] for d in self._dictarray] for key in keys}
 
     @property
     def dictarray(self) -> list[dict]:
-        """Returns a list representation of the UTF table.
-
-        Effectively, this retrieves a transposed version of the table, where multiple rows are combined into a single list.
-        """
+        """Returns a list representation of the UTF table. """
         return self._dictarray
 
 class UTFBuilder:

@@ -30,8 +30,8 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 - [x] Decoding (up to version 3.0)
 - [x] Encoding (up to version 3.0)
 ### ADX Audio Codec
-- [ ] Decoding (untested)
-- [ ] Encoding (untested)
+- [x] Decoding
+- [x] Encoding
 ### CPK
 - [ ] Unpacking (untested)
 - [ ] Packing (untested)

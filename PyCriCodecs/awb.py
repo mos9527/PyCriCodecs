@@ -7,8 +7,7 @@ from .hca import HCA
 
 # for AFS2 only.
 class AWB:
-    """ Use this class to return any AWB data with the getfiles function. """
-    __slots__ = ["stream", "numfiles", "align", "subkey", "version", "ids", "ofs", "filename", "headersize", "id_alignment", "id_intsize"]
+    """ Use this class to return any AWB data with the getfiles function. """    
     stream: BinaryIO
     numfiles: int
     align: int
@@ -109,8 +108,6 @@ class AWB:
 
 class AWBBuilder:
     """ Use this class to build any AWB of any kind given a directory with files. """
-    __slots__ = ["infiles", "outfile", "version", "align", "subkey", "id_intsize"]
-
     def __init__(self, infiles: list[bytes], subkey: int = 0, version: int = 2, id_intsize = 0x2, align: int = 0x20) -> None:
         if version == 1 and subkey != 0:
             raise ValueError("Cannot have a subkey with AWB version of 1.")

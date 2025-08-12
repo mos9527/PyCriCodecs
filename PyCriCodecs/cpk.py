@@ -4,9 +4,27 @@ import os
 from .chunk import *
 from .utf import UTF, UTFBuilder
 import CriCodecs
+from dataclasses import dataclass
 
+@dataclass
+class CPKFile():
+    stream: BinaryIO
+    path: str
+    offset: int   
+    size : int 
+    compressed : bool = False
+
+    def get_bytes(self) -> bytes:
+        self.stream.seek(self.offset)
+        data = self.stream.read(self.size)
+        if self.compressed:
+            data = CriCodecs.CriLaylaDecompress(data)
+        return data
+
+    def save(self, path : str):
+        with open(path, "wb") as f:
+            f.write(self.get_bytes())
 class TOC():
-    __slots__ = ["magic", "encflag", "packet_size", "unk0C", "stream", "table"]
     magic: bytes
     encflag: int
     packet_size: int
@@ -23,7 +41,6 @@ class TOC():
         self.table = UTF(self.stream.read()).table
 
 class CPK:
-    __slots__ = ["magic", "encflag", "packet_size", "unk0C", "stream", "tables", "filename"]
     magic: bytes
     encflag: int
     packet_size: int
@@ -44,9 +61,9 @@ class CPK:
         if self.magic != CPKChunkHeaderType.CPK.value:
             raise ValueError("Invalid CPK file.")
         self.tables = dict(CPK = UTF(self.stream.read(0x800-CPKChunkHeader.size)).table)
-        self.checkTocs()
+        self._load_tocs()
     
-    def checkTocs(self) -> None:
+    def _load_tocs(self) -> None:
         for key, value in self.tables["CPK"].items():
             if key == "TocOffset":
                 if value[0]:
@@ -83,26 +100,23 @@ class CPK:
                     self.stream.seek(value[0], 0)
                     self.tables["ETOC"] = TOC(self.stream.read(self.tables['CPK']["EtocSize"][0])).table
     
-    def extract(self):
+    @property
+    def files(self):
+        """Retrieves a list of all files in the CPK archive."""
         if "TOC" in self.tables:
             toctable = self.tables['TOC']
             rel_off = 0x800
             for i in range(len(toctable['FileName'])):
-                if toctable["DirName"][i%len(toctable["DirName"])] == '':
-                    dirname = self.filename.rsplit(".")[0]
-                else:
-                    dirname = os.path.join(self.filename.rsplit(".")[0], toctable["DirName"][i%len(toctable["DirName"])])
-                os.makedirs(dirname, exist_ok=True)
+                dirname = toctable["DirName"][i%len(toctable["DirName"])] 
                 filename = toctable['FileName'][i]
                 if len(filename) >= 255:
                     filename = filename[:250] + "_" + str(i) # 250 because i might be 4 digits long.
                 if toctable['ExtractSize'][i] > toctable['FileSize'][i]:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    comp_data = self.stream.read(toctable['FileSize'][i])
-                    open(os.path.join(dirname, filename), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                    yield CPKFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i], compressed=True)
                 else:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    open(os.path.join(dirname, filename), "wb").write(self.stream.read(toctable['FileSize'][i]))
+                    yield CPKFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i])                    
         elif "ITOC" in self.tables:
             toctableL = self.tables["ITOC"]['DataL'][0]
             toctableH = self.tables["ITOC"]['DataH'][0]
@@ -110,108 +124,27 @@ class CPK:
             offset = self.tables["CPK"]["ContentOffset"][0]
             files = self.tables["CPK"]["Files"][0]
             self.stream.seek(offset, 0)
-            if self.filename:
-                dirname = self.filename.rsplit(".")[0]
-                os.makedirs(dirname, exist_ok=True)
-            else:
-                dirname = ""
             for i in sorted(toctableH['ID']+toctableL['ID']):
                 if i in toctableH['ID']:
                     idx = toctableH['ID'].index(i)
                     if toctableH['ExtractSize'][idx] > toctableH['FileSize'][idx]:
-                        comp_data = self.stream.read(toctableH['FileSize'][idx])
-                        open(os.path.join(dirname, str(i)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                        yield CPKFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx], compressed=True)
                     else:
-                        open(os.path.join(dirname, str(i)), "wb").write(self.stream.read(toctableH['FileSize'][idx]))
+                        yield CPKFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx])
                     if toctableH['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableH['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
                 elif i in toctableL['ID']:
                     idx = toctableL['ID'].index(i)
                     if toctableL['ExtractSize'][idx] > toctableL['FileSize'][idx]:
-                        comp_data = self.stream.read(toctableL['FileSize'][idx])
-                        open(os.path.join(dirname, str(i)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
+                        yield CPKFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx], compressed=True)
                     else:
-                        open(os.path.join(dirname, str(i)), "wb").write(self.stream.read(toctableL['FileSize'][idx]))
+                        yield CPKFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx])
                     if toctableL['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableL['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
-                
-    def extract_file(self, filename):
-        if "TOC" in self.tables:
-            toctable = self.tables['TOC']
-            rel_off = 0x800
-            if toctable["DirName"][0] == '':
-                dirname = self.filename.rsplit(".")[0]
-            else:
-                dirname = os.path.join(self.filename.rsplit(".")[0], toctable["DirName"][0])
-            if self.filename:
-                os.makedirs(dirname, exist_ok=True)
-            if filename not in toctable['FileName']:
-                raise ValueError("Given filename does not exist inside the provided CPK.")
-            idx = toctable['FileName'].index(filename)
-            offset = rel_off+toctable["FileOffset"][idx]
-            size = toctable['FileSize'][idx]
-            self.stream.seek(offset, 0)
-            open(os.path.join(dirname, filename), "wb").write(self.stream.read(size))
-        elif "ITOC" in self.tables:
-            filename = int(filename)
-            toctableL = self.tables["ITOC"]['DataL'][0]
-            toctableH = self.tables["ITOC"]['DataH'][0]
-            alignmentsize = self.tables["CPK"]["Align"][0]
-            files = self.tables["CPK"]["Files"][0]
-            offset = self.tables["CPK"]["ContentOffset"][0]
-            if filename in toctableL['ID']:
-                idxg = toctableL['ID'].index(filename)
-            elif filename in toctableH['ID']:
-                idxg = toctableH['ID'].index(filename)
-            else:
-                raise ValueError("Given ID does not exist in the given CPK.")
-            self.stream.seek(offset, 0)
-            realOffset = offset
-            for i in sorted(toctableH['ID']+toctableL['ID']):
-                if i != filename:
-                    if i in toctableH["ID"]:
-                        idx = toctableH['ID'].index(i)
-                        realOffset += toctableH["FileSize"][idx]
-                        if toctableH["FileSize"][idx] % alignmentsize != 0:
-                            realOffset += (alignmentsize - toctableH["FileSize"][idx] % alignmentsize)
-                    elif i in toctableL["ID"]:
-                        idx = toctableL['ID'].index(i)
-                        realOffset += toctableH["FileSize"][idx]
-                        if toctableL["FileSize"][idx] % alignmentsize != 0:
-                            realOffset += (alignmentsize - toctableL["FileSize"][idx] % alignmentsize)
-                else:
-                    if self.filename:
-                        dirname = self.filename.rsplit(".")[0]
-                        os.makedirs(dirname)
-                    else:
-                        dirname = ""
-                    if filename in toctableH["ID"]:
-                        extractsz = toctableH['ExtractSize'][idxg]
-                        flsize = toctableH['FileSize'][idxg]
-                        if extractsz > flsize:
-                            self.stream.seek(realOffset)
-                            comp_data = self.stream.read(toctableH['FileSize'][idxg])
-                            open(os.path.join(dirname, str(filename)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
-                        else:
-                            open(os.path.join(dirname, str(filename)), "wb").write(self.stream.read(toctableH['FileSize'][idxg]))
-                    else:
-                        extractsz = toctableL['ExtractSize'][idxg]
-                        flsize = toctableL['FileSize'][idxg]
-                        if extractsz > flsize:
-                            self.stream.seek(realOffset)
-                            comp_data = self.stream.read(toctableL['FileSize'][idxg])
-                            open(os.path.join(dirname, str(filename)), "wb").write(CriCodecs.CriLaylaDecompress(comp_data))
-                        else:
-                            open(os.path.join(dirname, str(filename)), "wb").write(self.stream.read(toctableL['FileSize'][idxg]))
-                    break
-
 class CPKBuilder:
     """ Use this class to build semi-custom CPK archives. """
-    __slots__ = ["CpkMode", "Tver", "dirname", "itoc_size", "encrypt", "encoding", "files", "fileslen",
-                "ITOCdata", "CPKdata", "ContentSize", "EnabledDataSize", "outfile", "TOCdata", "GTOCdata",
-                "ETOCdata", "compress", "EnabledPackedSize", "init_toc_len"]
     CpkMode: int 
     # CPK mode dictates (at least from what I saw) the use of filenames in TOC or the use of
     # ITOC without any filenames (Use of ID's only, will be sorted).
