@@ -147,7 +147,7 @@ class USMCrypt:
 # There are a lot of unknowns, minbuf(minimum buffer of what?) and avbps(average bitrate per second)
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
-class FFmpegParser:
+class FFmpegCodec:
     filename: str
     filesize: int
 
@@ -231,9 +231,6 @@ class FFmpegParser:
             raw_frame = self.file.read(frame_size)
             yield raw_frame, frame, frame["flags"][0] == "K", float(frame["duration_time"])
 
-    def get_chunk_dt(self):
-        raise NotImplementedError # Implemented by subclasses
-
     def generate_SFV(self, builder: "USMBuilder"):        
         v_framerate = int(self.framerate)
         current_interval = 0
@@ -290,7 +287,7 @@ class FFmpegParser:
         shutil.copyfileobj(self.file, open(filepath, 'wb'))
         self.file.seek(tell)
 
-class VP9Codec(FFmpegParser):
+class VP9Codec(FFmpegCodec):
     MPEG_CODEC = 9
     MPEG_DCPREC = 0
     VERSION = 16777984
@@ -298,7 +295,7 @@ class VP9Codec(FFmpegParser):
     def __init__(self, filename: str | bytes):
         super().__init__(filename)
         assert self.format == "ivf", "must be ivf format."
-class H264Codec(FFmpegParser):
+class H264Codec(FFmpegCodec):
     MPEG_CODEC = 5
     MPEG_DCPREC = 11
     VERSION = 0
@@ -308,7 +305,7 @@ class H264Codec(FFmpegParser):
         assert (
             self.format == "h264"
         ), "must be raw h264 data. transcode with '.h264' suffix as output"
-class MPEG1Codec(FFmpegParser):
+class MPEG1Codec(FFmpegCodec):
     MPEG_CODEC = 1
     MPEG_DCPREC = 11
     VERSION = 0
@@ -316,7 +313,6 @@ class MPEG1Codec(FFmpegParser):
     def __init__(self, stream : str | bytes):
         super().__init__(stream)
         assert 'mp4' in self.format, "must be mp4 format."
-
 
 class HCACodec(HCA):
     CHUNK_INTERVAL = 64
@@ -329,12 +325,11 @@ class HCACodec(HCA):
     chnls: int
     sampling_rate: int
     total_samples: int
-
     avbps: int
 
     filesize: int
 
-    def __init__(self, stream: str | bytes, filename: str, key=0, subkey=0):
+    def __init__(self, stream: str | bytes, filename: str, quality: CriHcaQuality, key=0, subkey=0, **kwargs):
         self.filename = filename
         super().__init__(stream, key, subkey)
         if self.filetype == "wav":
@@ -342,6 +337,7 @@ class HCACodec(HCA):
                 force_not_looping=True,
                 encrypt=key != 0,
                 keyless=False,
+                quality_level=quality
             )
         self.hcastream.seek(0, 2)
         self.filesize = self.hcastream.tell()
@@ -439,9 +435,122 @@ class HCACodec(HCA):
         with open(filepath, "wb") as f:
             f.write(self.decode())
 
-    @property
-    def extra_hdrinfo(self):
-        return {"ambisonics": (UTFTypeValues.uint, 0)}
+class ADXCodec(ADX):
+    CHUNK_INTERVAL = 99.9
+    BASE_FRAMERATE = 2997
+    # TODO: Move these to an enum
+    AUDIO_CODEC = 2
+    METADATA_COUNT = 0
+
+    filename : str
+    filesize : int
+
+    adx : bytes
+    header : bytes
+    sfaStream: BinaryIO    
+
+    AdxDataOffset: int
+    AdxEncoding: int
+    AdxBlocksize: int
+    AdxSampleBitdepth: int
+    AdxChannelCount: int
+    AdxSamplingRate: int
+    AdxSampleCount: int
+    AdxHighpassFrequency: int
+    AdxVersion: int
+    AdxFlags: int
+
+    chnls: int
+    sampling_rate: int
+    total_samples: int
+    avbps: int
+
+    def __init__(self, stream: str | bytes, filename: str, bitdepth: int = 4, **kwargs):
+        if type(stream) == str:
+            self.adx = open(stream, "rb").read()
+        else:
+            self.adx = stream
+        self.filename = filename
+        self.filesize = len(self.adx)
+        magic = self.adx[:4]
+        if magic == b"RIFF":
+            self.adx = self.encode(self.adx, bitdepth, force_not_looping=True)        
+        self.sfaStream = BytesIO(self.adx)
+        header = AdxHeaderStruct.unpack(self.sfaStream.read(AdxHeaderStruct.size))
+        FourCC, self.AdxDataOffset, self.AdxEncoding, self.AdxBlocksize, self.AdxSampleBitdepth, self.AdxChannelCount, self.AdxSamplingRate, self.AdxSampleCount, self.AdxHighpassFrequency, self.AdxVersion, self.AdxFlags = header
+        assert FourCC == 0x8000, "Either ADX or WAV is supported"
+        assert self.AdxVersion in {3,4}, "Unsupported ADX version"
+        if self.AdxVersion == 4:
+            self.sfaStream.seek(4 + 4  * self.AdxChannelCount, 1)  # Padding + Hist values, they always seem to be 0.
+        self.sfaStream.seek(0)
+        self.chnls = self.AdxChannelCount
+        self.sampling_rate = self.AdxSamplingRate
+        self.total_samples = self.AdxSampleCount
+        self.avbps = int(self.filesize * 8 * self.chnls) - self.filesize
+    
+    def generate_SFA(self, index: int, builder: "USMBuilder"):
+        current_interval = 0
+        stream_size = len(self.adx) - self.AdxBlocksize
+        chunk_size = int(self.AdxSamplingRate // (self.BASE_FRAMERATE / 100) // 32) * (self.AdxBlocksize * self.AdxChannelCount)
+        self.sfaStream.seek(0)
+        res = []
+        while self.sfaStream.tell() < stream_size:
+            if self.sfaStream.tell() > 0:
+                if self.sfaStream.tell() + chunk_size < stream_size:
+                    datalen = chunk_size
+                else:
+                    datalen = (stream_size - (self.AdxDataOffset + 4) - chunk_size) % chunk_size
+            else:
+                datalen = self.AdxDataOffset + 4
+            padding = (0x20 - (datalen % 0x20) if datalen % 0x20 != 0 else 0)
+            SFA_chunk = USMChunkHeader.pack(
+                    USMChunckHeaderType.SFA.value,
+                    datalen + 0x18 + padding,
+                    0,
+                    0x18,
+                    padding,
+                    index,
+                    0,
+                    0,
+                    0,
+                    round(current_interval),
+                    self.BASE_FRAMERATE,
+                    0,
+                    0
+                    )
+            chunk_data = self.sfaStream.read(datalen)
+            if builder.encrypt_audio:
+                SFA_chunk = builder.AudioMask(chunk_data)
+            SFA_chunk += chunk_data.ljust(datalen + padding, b"\x00")            
+            current_interval += self.CHUNK_INTERVAL
+            res.append(SFA_chunk)
+        else:
+            SFA_chunk = USMChunkHeader.pack(
+                        USMChunckHeaderType.SFA.value,
+                        0x38,
+                        0,
+                        0x18,
+                        0,
+                        index,
+                        0,
+                        0,
+                        2,
+                        0,
+                        30,
+                        0,
+                        0
+                        )
+            SFA_chunk += b"#CONTENTS END   ===============\x00"
+            res[-1] += SFA_chunk
+        return res
+
+    def get_metadata(self):
+        return None
+
+    def save(self, filepath: str):
+        """Saves the encoded ADX audio to filepath"""
+        with open(filepath, "wb") as f:
+            f.write(self.decode(self.adx))
 
 
 class USM(USMCrypt):
@@ -618,6 +727,8 @@ class USM(USMCrypt):
     def get_audios(self) -> List[HCACodec]:
         """Create a list of audio codecs from the available streams."""
         match self.audio_codec:
+            case ADXCodec.AUDIO_CODEC:
+                return [ADXCodec(s[2], s[1]) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value]
             case HCACodec.AUDIO_CODEC:
                 return [HCACodec(s[2], s[1]) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value] # HCAs are never encrypted in USM
             case _:
@@ -628,18 +739,20 @@ class USMBuilder(USMCrypt):
     video_stream: VP9Codec | H264Codec | MPEG1Codec
     
     enable_audio: bool
-    audio_streams: List[HCACodec]
+    audio_streams: List[HCACodec | ADXCodec]
 
     key: int
     encrypt: bool
     encrypt_audio: bool
 
+    audio_codec: int
+    # !!: TODO Quality settings
     def __init__(
         self,
         video: str,
         audio: List[str] | str = None,
         key = None,
-        audio_codec="hca",
+        audio_codec=HCACodec.AUDIO_CODEC,
         encrypt_audio: bool = False,
     ) -> None:
         """Initialize the USMBuilder from set source files.
@@ -651,10 +764,10 @@ class USMBuilder(USMCrypt):
                 - VP9 (with IVF container): VP9 Codec
             audio (List[str] | str, optional): The path(s) to the audio file(s). Defaults to None.
             key (str | int, optional): The encryption key. Either int64 or a hex string. Defaults to None.
-            audio_codec (str, optional): The audio codec to use. Defaults to "hca".
+            audio_codec (int, optional): The audio codec to use. Defaults to HCACodec.AUDIO_CODEC.
             encrypt_audio (bool, optional): Whether to encrypt the audio. Defaults to False.
         """
-        self.audio_codec = audio_codec.lower()
+        self.audio_codec = audio_codec
         self.encrypt = False
         self.enable_audio = False
         self.encrypt_audio = encrypt_audio
@@ -671,7 +784,7 @@ class USMBuilder(USMCrypt):
             self.enable_audio = True
 
     def load_video(self, video):
-        temp_stream = FFmpegParser(video)
+        temp_stream = FFmpegCodec(video)
         self.video_stream = None
         match temp_stream.stream["codec_name"]:
             case "h264":
@@ -703,8 +816,11 @@ class USMBuilder(USMCrypt):
 
         self.audio_streams = []
         codec = None
-        if self.audio_codec == "hca":
-            codec = HCACodec
+        match self.audio_codec:
+            case HCACodec.AUDIO_CODEC:
+                codec = HCACodec
+            case ADXCodec.AUDIO_CODEC:
+                codec = ADXCodec
         assert codec, (
             "fail to match suitable audio codec given option: %s" % self.audio_codec
         )
@@ -902,7 +1018,7 @@ class USMBuilder(USMCrypt):
             for stream in self.audio_streams:
                 metadata = stream.get_metadata()
                 if not metadata:
-                    audio_metadata.append(b"")
+                    break
                 else:
                     padding = (
                         0x20 - (len(metadata) % 0x20)
@@ -937,12 +1053,11 @@ class USMBuilder(USMCrypt):
                         "total_samples": (UTFTypeValues.uint, stream.total_samples),
                         "num_channels": (UTFTypeValues.uchar, stream.chnls),
                         "metadata_count": (UTFTypeValues.uint, stream.METADATA_COUNT),
-                        "metadat_size": (UTFTypeValues.uint, len(audio_metadata[chno])),
+                        "metadat_size": (UTFTypeValues.uint, len(audio_metadata[chno]) if audio_metadata else 0),
                         "ixsize": (UTFTypeValues.uint, 27860),
+                        "ambisonics": (UTFTypeValues.uint, 0)
                     }
-                ]
-                if stream.extra_hdrinfo:
-                    AUDIO_HDRINFO[0].update(stream.extra_hdrinfo)
+                ]                
                 p = UTFBuilder(AUDIO_HDRINFO, table_name="AUDIO_HDRINFO")
                 p.strings = b"<NULL>\x00" + p.strings
                 header = p.bytes()

@@ -17,6 +17,8 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 ### USM Sofdec2 (Mux/Demux)
 #### Audio Stream
 - [x] HCA
+- [ ] ADX
+
 #### Video Stream
 **NOTE**: You definitely want to tweak these encode settings a bit.
 
@@ -38,7 +40,6 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 
 ## Roadmap
 - [ ] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecs/blob/main/Research/ACBSchema.py)
-- [ ] Implement ADX as USM audio codec
 - [ ] Interface for encode tasks (CLI then maybe GUI?)
 - [ ] Documentation
 - [ ] C/C++ port + FFI

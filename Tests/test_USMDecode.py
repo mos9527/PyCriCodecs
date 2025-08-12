@@ -1,9 +1,9 @@
 from . import sample_file_path, temp_file_path
 
 from PyCriCodecs.usm import USM
-usm = USM(sample_file_path('.temp/with_audio.usm'))
-video = usm.get_video()
+usm = USM(sample_file_path('.temp/with_audio_adx.usm'))
 audio = usm.get_audios()
+video = usm.get_video()
 audio = audio[0] if audio else None
 # Mux into MP4
 import ffmpeg, os

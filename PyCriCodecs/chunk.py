@@ -10,6 +10,8 @@ WavHeaderStruct = Struct("<4sI4s4sIHHIIHH") # This is wrong, FMT Struct should b
 WavSmplHeaderStruct = Struct("<4sIIIIIIIIIIIIIIII") # Supports only 1 looping point.
 WavNoteHeaderStruct = Struct("<4sII")
 WavDataHeaderStruct = Struct("<4sI")
+AdxHeaderStruct = Struct(">HHBBBBIIHBB")
+AdxLoopHeaderStruct = Struct(">HHHHIIII")
 
 class USMChunckHeaderType(Enum):
     CRID  = b"CRID" # Header.
