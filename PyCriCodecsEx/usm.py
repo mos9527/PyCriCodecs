@@ -150,6 +150,7 @@ class USMCrypt:
 # are still unknown how to derive them, at least video wise it is possible, no idea how it's calculated audio wise nor anything else
 # seems like it could be random values and the USM would still work.
 class FFmpegCodec:
+    """Base codec for FFMpeg-based Video streams"""
     filename: str
     filesize: int
 
@@ -232,7 +233,7 @@ class FFmpegCodec:
         return len(self.packets)
 
     def frames(self):
-        """frame data, frame dict, is keyframe, duration"""
+        """Generator of [frame data, frame dict, is keyframe, duration]"""
         offsets = [int(packet["pos"]) for packet in self.packets] + [self.filesize]
         for i, frame in enumerate(self.packets):
             frame_size = offsets[i + 1] - offsets[i]
@@ -290,13 +291,16 @@ class FFmpegCodec:
         return SFV_list
 
     def save(self, filepath: str):
-        '''Saves the raw, underlying video stream to a file.'''
+        '''Saves the underlying video stream to a file.'''
         tell = self.file.tell()
         self.file.seek(0)
         shutil.copyfileobj(self.file, open(filepath, 'wb'))
         self.file.seek(tell)
 
 class VP9Codec(FFmpegCodec):
+    """VP9 Video stream codec.
+    
+    Only streams with `.ivf` containers are supported."""
     MPEG_CODEC = 9
     MPEG_DCPREC = 0
     VERSION = 16777984
@@ -305,6 +309,9 @@ class VP9Codec(FFmpegCodec):
         super().__init__(filename)
         assert self.format == "ivf", "must be ivf format."
 class H264Codec(FFmpegCodec):
+    """H264 Video stream codec.
+
+    Only streams with `.h264` containers are supported."""
     MPEG_CODEC = 5
     MPEG_DCPREC = 11
     VERSION = 0
@@ -315,6 +322,9 @@ class H264Codec(FFmpegCodec):
             self.format == "h264"
         ), "must be raw h264 data. transcode with '.h264' suffix as output"
 class MPEG1Codec(FFmpegCodec):
+    """MPEG1 Video stream codec.
+
+    Only streams with `.mpeg1` containers are supported."""
     MPEG_CODEC = 1
     MPEG_DCPREC = 11
     VERSION = 0
