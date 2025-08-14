@@ -170,8 +170,8 @@ class ACB(UTF):
         """
         CODEC_TABLE = {
             AcbEncodeTypes.ADX: ADXCodec,
-            AcbEncodeTypes.HCA: HCACodec, # HCA-MX
-            AcbEncodeTypes.HCAMX: HCACodec, # HCA-MX
+            AcbEncodeTypes.HCA: HCACodec,
+            AcbEncodeTypes.HCAMX: HCACodec,
         }
         awb = self.awb
         wavs = []        

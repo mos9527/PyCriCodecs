@@ -11,8 +11,11 @@ For USM features, you need `ffmpeg` installed and available in your PATH. See al
 ## Features
 If not otherwise mentioned, all features marked with [x] are considered working, and has been verified with official tools.
 
+Examples are available in [Tests](https://github.com/mos9527/PyCriCodecsEx/tree/main/Tests)
+
 ### ACB Cue sheets (also AWB)
-- [x] Editing & Saving (Scripting APIs. Helper functions TODO. see examples in [Tests](https://github.com/mos9527/PyCriCodecsEx/tree/main/Tests))
+- [x] Extracting Cue's associated waveforms
+- [x] Editing & Saving
 ### USM Sofdec2 (Encode & Decode)
 #### Audio Stream
 For audio to be muxed in, you need a PCM WAV sample with NO metadata, which can be produced with e.g.:
@@ -41,7 +44,7 @@ Decoding and Encoded format can be the following:
 - [x] Packing
 
 ## Roadmap
-- [ ] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecsEx/blob/main/Research/ACBSchema.py)
+- [x] ACB Extraction (Massive TODO. see also https://github.com/mos9527/PyCriCodecsEx/blob/main/Research/ACBSchema.py)
 - [ ] Interface for encode tasks (CLI then maybe GUI?)
 - [ ] Documentation
 - [ ] C/C++ port + FFI
