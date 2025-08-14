@@ -1,3 +1,8 @@
+# Credit:
+# - github.com/vgmstream/vgmstream which is why this is possible at all
+# - Original work by https://github.com/Youjose/PyCriCodecs
+# See Research/ACBSchema.py for more details.
+
 from typing import Generator, List, Tuple
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder, UTFViewer
@@ -5,12 +10,6 @@ from PyCriCodecsEx.usm import HCACodec, ADXCodec
 from PyCriCodecsEx.awb import AWB, AWBBuilder
 from dataclasses import dataclass
 from copy import deepcopy
-import os
-
-# Credit:
-# - github.com/vgmstream/vgmstream which is why this is possible at all
-# - Original work by https://github.com/Youjose/PyCriCodecs
-# See Research/ACBSchema.py for more details.
 
 class CueNameTable(UTFViewer):
     CueIndex: int
@@ -239,16 +238,21 @@ class ACB(UTF):
             waveforms = self.view.waveform_of(cue.CueId)
             yield CueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
 
-# Building ACB from scratch isn't planned for now since:
-# * We don't know how SeqCommandTable TLVs work. This is the biggest issue.
-# - Many fields are unknown or not well understood
-#   - Games may expect AcfReferenceTable, Asiac stuff etc to be present for their own assets in conjunction
-#     with their own ACF table. Missing these is not a fun debugging experience.
-# Maybe one day I'll get around to this. But WONTFIX for now.
 class ACBBuilder:
     acb: ACB
 
     def __init__(self, acb: ACB) -> None:
+        """Initializes the ACBBuilder with an existing ACB object.
+        
+        Building ACB from scratch isn't planned for now since:
+        * We don't know how SeqCommandTable TLVs work. This is the biggest issue.
+        * Many fields are unknown or not well understood
+          - Games may expect AcfReferenceTable, Asiac stuff etc to be present for their own assets in conjunction
+            with their own ACF table. Missing these is not a fun debugging experience.
+        * ACB tables differ a LOT from game to game (e.g. Lipsync info), contary to USM formats.
+
+        Maybe one day I'll get around to this. But otherwise starting from nothing is a WONTFIX for now.
+        """
         self.acb = acb
 
     def build(self) -> bytes:

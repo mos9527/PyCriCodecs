@@ -4,11 +4,10 @@ from PyCriCodecsEx.usm import USM, USMBuilder, ADXCodec, HCACodec
 
 def test_usm_decode_and_mux():
     # Build a USM
-    builder = USMBuilder(
-        sample_file_path('USM/default.m1v'), # MPEG1. See USMBuilder doc
-        sample_file_path('WAV/default.wav'),
-        audio_codec=ADXCodec.AUDIO_CODEC
-    )
+    builder = USMBuilder()
+    builder.add_video(sample_file_path('USM/default.m1v')) # MPEG1. See USMBuilder doc
+    builder.add_audio(ADXCodec(sample_file_path('WAV/default.wav')))
+
     with open(temp_file_path('build.usm'), 'wb') as f:
         f.write(builder.build())
     print('Build Done.')

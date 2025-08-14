@@ -14,8 +14,10 @@ If not otherwise mentioned, all features marked with [x] are considered working,
 Examples are available in [Tests](https://github.com/mos9527/PyCriCodecsEx/tree/main/Tests)
 
 ### ACB Cue sheets (also AWB)
-- [x] Extracting Cue's associated waveforms
-- [x] Editing & Saving
+- [x] Cue extraction support for most ACBs
+- [x] Cue waveform(s) encoding with ADX/HCA support
+- [x] Comprehensive Cue metadata editing support (via Python API)
+
 ### USM Sofdec2 (Encode & Decode)
 #### Audio Stream
 For audio to be muxed in, you need a PCM WAV sample with NO metadata, which can be produced with e.g.:

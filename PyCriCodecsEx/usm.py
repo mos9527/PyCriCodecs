@@ -434,6 +434,7 @@ class HCACodec(HCA):
         return p.bytes()
 
     def get_encoded(self):
+        """Gets the encoded HCA audio data."""
         self.hcastream.seek(0)
         res = self.hcastream.read()
         self.hcastream.seek(0)
@@ -559,6 +560,7 @@ class ADXCodec(ADX):
         return None
 
     def get_encoded(self):
+        """Gets the encoded ADX audio data."""
         return self.adx
 
     def save(self, filepath: str):
@@ -738,7 +740,7 @@ class USM(USMCrypt):
         stream.filename = sfname
         return stream
 
-    def get_audios(self) -> List[HCACodec]:
+    def get_audios(self) -> List[ADXCodec | HCACodec]:
         """Create a list of audio codecs from the available streams."""
         match self.audio_codec:
             case ADXCodec.AUDIO_CODEC:
@@ -751,113 +753,71 @@ class USM(USMCrypt):
 class USMBuilder(USMCrypt):
     """USM class for building USM files."""
     video_stream: VP9Codec | H264Codec | MPEG1Codec
-    
-    enable_audio: bool
     audio_streams: List[HCACodec | ADXCodec]
 
-    key: int
-    encrypt: bool
-    encrypt_audio: bool
+    key: int = None
+    encrypt: bool = False
+    encrypt_audio: bool = False
 
-    audio_codec: int
-    # !!: TODO Quality settings
     def __init__(
         self,
-        video: str,
-        audio: List[str] | str = None,
         key = None,
-        audio_codec=HCACodec.AUDIO_CODEC,
-        encrypt_audio: bool = False,
+        encrypt_audio = False
     ) -> None:
         """Initialize the USMBuilder from set source files.
 
         Args:
-            video (str): The path to the video file. The video source format will be used to map accordingly to the ones Sofdec use.
-                - MPEG1 (with M1V container): MPEG1 Codec (Sofdec Prime)
-                - H264 (with H264 container): H264 Codec
-                - VP9 (with IVF container): VP9 Codec
-            audio (List[str] | str, optional): The path(s) to the audio file(s). Defaults to None.
             key (str | int, optional): The encryption key. Either int64 or a hex string. Defaults to None.
-            audio_codec (int, optional): The audio codec to use. Defaults to HCACodec.AUDIO_CODEC.
-            encrypt_audio (bool, optional): Whether to encrypt the audio. Defaults to False.
+            encrypt_audio (bool, optional): Whether to also encrypt the audio. Defaults to False.
         """
-        self.audio_codec = audio_codec
-        self.encrypt = False
-        self.enable_audio = False
-        self.encrypt_audio = encrypt_audio
-        self.key = 0
-        if encrypt_audio and not key:
-            raise ValueError("Cannot encrypt Audio without key.")
         if key:
             self.init_key(key)
             self.encrypt = True
-        self.load_video(video)
+        self.encrypt_audio = encrypt_audio
         self.audio_streams = []
-        if audio:
-            self.load_audio(audio)
-            self.enable_audio = True
 
-    def load_video(self, video):
-        temp_stream = FFmpegCodec(video)
-        self.video_stream = None
-        match temp_stream.stream["codec_name"]:
-            case "h264":
-                self.video_stream = H264Codec(video)
-            case "vp9":
-                self.video_stream = VP9Codec(video)
-            case "mpeg1video":
-                self.video_stream = MPEG1Codec(video)
-        assert self.video_stream, (
-            "fail to match suitable video codec. Codec=%s"
-            % temp_stream.stream["codec_name"]
-        )
+    def add_video(self, video : str | H264Codec | VP9Codec | MPEG1Codec):
+        """Sets the video stream from the specified video file.
 
-    def load_audio(self, audio):
-        self.audio_filenames = []
-        if type(audio) == list:
-            count = 0
-            for track in audio:
-                if type(track) == str:
-                    self.audio_filenames.append(os.path.basename(track))
-                else:
-                    self.audio_filenames.append("{:02d}.sfa".format(count))
-                    count += 1
+        USMs only support one video stream. Consecutive calls to this method will replace the existing video stream.
+
+        When `video` is str - it will be treated as a file path. The video source format will be used to map accordingly to the ones Sofdec use.
+            - MPEG1 (with M1V container): MPEG1 Codec (Sofdec Prime)
+            - H264 (with H264 container): H264 Codec
+            - VP9 (with IVF container): VP9 Codec
+            
+        Args:
+            video (str | FFmpegCodec): The path to the video file or an FFmpegCodec instance.
+        """
+        if isinstance(video, str):
+            temp_stream = FFmpegCodec(video)
+            self.video_stream = None
+            match temp_stream.stream["codec_name"]:
+                case "h264":
+                    self.video_stream = H264Codec(video)
+                case "vp9":
+                    self.video_stream = VP9Codec(video)
+                case "mpeg1video":
+                    self.video_stream = MPEG1Codec(video)
+            assert self.video_stream, (
+                "fail to match suitable video codec. Codec=%s"
+                % temp_stream.stream["codec_name"]
+            )
         else:
-            if type(audio) == str:
-                self.audio_filenames.append(os.path.basename(audio))
-            else:
-                self.audio_filenames.append("00.sfa")
+            self.video_stream = video
 
-        self.audio_streams = []
-        codec = None
-        match self.audio_codec:
-            case HCACodec.AUDIO_CODEC:
-                codec = HCACodec
-            case ADXCodec.AUDIO_CODEC:
-                codec = ADXCodec
-        assert codec, (
-            "fail to match suitable audio codec given option: %s" % self.audio_codec
-        )
-        if type(audio) == list:
-            for track in audio:
-                if type(track) == str:
-                    fn = os.path.basename(track)
-                else:
-                    fn = "{:02d}.sfa".format(count)
-                hcaObj = codec(track, fn, key=self.key)
-                self.audio_streams.append(hcaObj)
-        else:
-            if type(audio) == str:
-                fn = os.path.basename(audio)
-            else:
-                fn = "00.sfa"
-            hcaObj = codec(audio, fn, key=self.key)
-            self.audio_streams.append(hcaObj)
+    def add_audio(self, audio : ADXCodec | HCACodec):
+        """Append the audio stream(s) from the specified audio file(s).
 
+        Args:
+            audio (ADXCodec | HCACodec): The path(s) to the audio file(s).
+        """
+        self.audio_streams.append(audio)
 
     def build(self) -> bytes:
+        """Build the USM payload"""
         SFV_list = self.video_stream.generate_SFV(self)
-        if self.enable_audio:
+        if self.audio_streams:
             SFA_chunks = [s.generate_SFA(i, self) for i, s in enumerate(self.audio_streams) ]
         else:
             SFA_chunks = []
@@ -937,7 +897,7 @@ class USMBuilder(USMCrypt):
         )
         CRIUSF_DIR_STREAM.append(video_dict)
 
-        if self.enable_audio:
+        if self.audio_streams:
             chno = 0
             for stream in self.audio_streams:
                 avbps = stream.avbps
@@ -945,7 +905,7 @@ class USMBuilder(USMCrypt):
                 minbuf += 27860
                 audio_dict = dict(
                     fmtver=(UTFTypeValues.uint, 0),
-                    filename=(UTFTypeValues.string, self.audio_filenames[chno]),
+                    filename=(UTFTypeValues.string, stream.filename),
                     filesize=(UTFTypeValues.uint, stream.filesize),
                     datasize=(UTFTypeValues.uint, 0),
                     stmid=(
@@ -1027,7 +987,7 @@ class USMBuilder(USMCrypt):
 
         audio_metadata = []
         audio_headers = []
-        if self.enable_audio:
+        if self.audio_streams:
             chno = 0
             for stream in self.audio_streams:
                 metadata = stream.get_metadata()
@@ -1150,7 +1110,7 @@ class USMBuilder(USMCrypt):
         VIDEO_HDRINFO = gen_video_hdr_info(len(VIDEO_SEEKINFO))
 
         total_len = sum([len(x) for x in SFV_list]) + first_chk_ofs
-        if self.enable_audio:
+        if self.audio_streams:
             sum_len = 0
             for stream in SFA_chunks:
                 for x in stream:
@@ -1190,7 +1150,7 @@ class USMBuilder(USMCrypt):
 
         # Header chunks
         header += VIDEO_HDRINFO
-        if self.enable_audio:
+        if self.audio_streams:
             header += b''.join(audio_headers)            
         SFV_END = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
@@ -1211,7 +1171,7 @@ class USMBuilder(USMCrypt):
         header += SFV_END
 
         SFA_chk_END  = b'' # Maybe reused
-        if self.enable_audio:
+        if self.audio_streams:
             SFA_chk_END  = b''.join([
                 USMChunkHeader.pack(
                     USMChunckHeaderType.SFA.value,
@@ -1232,7 +1192,7 @@ class USMBuilder(USMCrypt):
         header += SFA_chk_END # Ends audio_headers
         header += VIDEO_SEEKINFO
 
-        if self.enable_audio:
+        if self.audio_streams:
             header += b''.join(audio_metadata)
         SFV_END = USMChunkHeader.pack(
             USMChunckHeaderType.SFV.value,
