@@ -482,7 +482,7 @@ class USM(USMCrypt):
             stmid = int.to_bytes(stmid, 4, 'big', signed='False')
             yield stmid, str(filename), self.output.get(f'{stmid.decode()}_{chno}', None)
     
-    def get_video(self):
+    def get_video(self) -> VP9Codec | H264Codec | MPEG1Codec:
         """Create a video codec from the available streams.
 
         NOTE: A temporary file may be created with this process to determine the stream information."""

@@ -438,14 +438,17 @@ class HCACodec(HCA):
         p.strings = b"<NULL>\x00" + p.strings
         return p.bytes()
 
-    def get_encoded(self):
+    def get_encoded(self) -> bytes:
         """Gets the encoded HCA audio data."""
         self.hcastream.seek(0)
         res = self.hcastream.read()
         self.hcastream.seek(0)
         return res
     
-    def save(self, filepath: str):
-        """Saves the decoded WAV audio to filepath"""
-        with open(filepath, "wb") as f:
-            f.write(self.decode())
+    def save(self, filepath: str | BinaryIO):
+        """Saves the decoded WAV audio to filepath or a writable stream"""
+        if type(filepath) == str:
+            with open(filepath, "wb") as f:
+                f.write(self.decode())
+        else:
+            filepath.write(self.decode())

@@ -144,12 +144,15 @@ class ADXCodec(ADX):
     def get_metadata(self):
         return None
 
-    def get_encoded(self):
+    def get_encoded(self) -> bytes:
         """Gets the encoded ADX audio data."""
         return self.adx
 
-    def save(self, filepath: str):
-        """Saves the decoded WAV audio to filepath"""
-        with open(filepath, "wb") as f:
-            f.write(self.decode(self.adx))
+    def save(self, filepath: str | BinaryIO):
+        """Saves the decoded WAV audio to filepath or a writable stream"""
+        if type(filepath) == str:
+            with open(filepath, "wb") as f:
+                f.write(self.decode(self.adx))
+        else:
+            filepath.write(self.decode(self.adx))
 

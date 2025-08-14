@@ -1,6 +1,5 @@
 from io import BytesIO, FileIO
-import os
-from typing import BinaryIO
+from typing import BinaryIO, Generator
 from struct import iter_unpack, pack
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.hca import HCA
@@ -55,7 +54,7 @@ class AWB:
             self.headersize = self.headersize + (self.align - (self.headersize % self.align))
         self.stream.seek(self.headersize, 0)
 
-    def get_files(self):
+    def get_files(self) -> Generator[bytes, None, None]:
         """Generator function to yield all data blobs from an AWB. """
         self.stream.seek(self.headersize, 0)
         for i in range(1, len(self.ofs)):
