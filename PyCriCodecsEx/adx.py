@@ -5,7 +5,7 @@ import CriCodecsEx
 class ADX:
     """ADX class for decoding and encoding ADX files, pass the either `adx file` or `wav file` in bytes to either `decode` or `encode` respectively.
 
-    NOTE: Direct usage of this class is not recommended, use the `ADXCodec` wrapper instead.
+    **NOTE:** Direct usage of this class is not recommended, use the `ADXCodec` wrapper instead.
     """
 
     # Decodes ADX to WAV.
@@ -21,7 +21,7 @@ class ADX:
         return CriCodecsEx.AdxEncode(bytes(data), BitDepth, Blocksize, Encoding, Highpass_Frequency, Filter, AdxVersion, force_not_looping)
     
 class ADXCodec(ADX):
-    """ADX codec class for encoding and decoding ADX files, from and to WAV."""
+    """Use this class for encoding and decoding ADX files, from and to WAV."""
 
     CHUNK_INTERVAL = 99.9
     BASE_FRAMERATE = 2997

@@ -82,6 +82,7 @@ class AWB:
             raise ValueError("Unknown int size.")
 
 class AWBBuilder:
+    """Use this class to build AWB files from a list of bytes."""
     def __init__(self, infiles: list[bytes], subkey: int = 0, version: int = 2, id_intsize = 0x2, align: int = 0x20) -> None:
         """Initializes the AWB builder.
 

@@ -327,7 +327,7 @@ from PyCriCodecsEx.hca import HCACodec
 from PyCriCodecsEx.adx import ADXCodec
 
 class USM(USMCrypt):
-    """USM class for extracting infromation and data from a USM file."""
+    """Use this class to extract infromation and data from a USM file."""
 
     filename: str
     decrypt: bool
@@ -476,7 +476,7 @@ class USM(USMCrypt):
 
     @property
     def streams(self):
-        """[Type (@SFV, @SFA), Filename, Raw stream data]"""
+        """Generator of Tuple[Stream Type ("@SFV", "@SFA"), File name, Raw stream data]"""
         for stream in self.CRIDObj.dictarray[1:]:
             filename, stmid, chno = stream["filename"][1], stream["stmid"][1], stream["chno"][1]
             stmid = int.to_bytes(stmid, 4, 'big', signed='False')
@@ -511,7 +511,7 @@ class USM(USMCrypt):
                 return []
 
 class USMBuilder(USMCrypt):
-    """USM class for building USM files."""
+    """Use this class to build USM files."""
     video_stream: VP9Codec | H264Codec | MPEG1Codec
     audio_streams: List[HCACodec | ADXCodec]
 

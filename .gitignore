@@ -7,3 +7,4 @@ temp_*
 *.aprof
 *.pdb
 dist/
+_*

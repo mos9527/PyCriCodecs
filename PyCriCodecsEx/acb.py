@@ -137,8 +137,13 @@ class CueItem:
     Waveforms: list[int] # List of waveform IDs
 
 class ACB(UTF):
-    """An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place."""
+    """Use this class to read, and modify ACB files in memory."""
     def __init__(self, stream : str | BinaryIO) -> None:
+        """Loads an ACB file from the given stream.
+
+        Args:
+            stream (str | BinaryIO): The path to the ACB file or a BinaryIO stream containing the ACB data.
+        """
         super().__init__(stream, recursive=True)
 
     @property
@@ -240,17 +245,22 @@ class ACB(UTF):
             yield CueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
 
 class ACBBuilder:
+    """Use this class to build ACB files from an existing ACB object."""
     acb: ACB
 
     def __init__(self, acb: ACB) -> None:
         """Initializes the ACBBuilder with an existing ACB object.
         
+        Args:
+            acb (ACB): The ACB object to build from.
+
         Building ACB from scratch isn't planned for now since:
-        * We don't know how SeqCommandTable TLVs work. This is the biggest issue.
-        * Many fields are unknown or not well understood
-          - Games may expect AcfReferenceTable, Asiac stuff etc to be present for their own assets in conjunction
-            with their own ACF table. Missing these is not a fun debugging experience.
-        * ACB tables differ a LOT from game to game (e.g. Lipsync info), contary to USM formats.
+                
+            * We don't know how SeqCommandTable TLVs work. This is the biggest issue.
+            * Many fields are unknown or not well understood
+            - Games may expect AcfReferenceTable, Asiac stuff etc to be present for their own assets in conjunction
+                with their own ACF table. Missing these is not a fun debugging experience.
+            * ACB tables differ a LOT from game to game (e.g. Lipsync info), contary to USM formats.
 
         Maybe one day I'll get around to this. But otherwise starting from nothing is a WONTFIX for now.
         """

@@ -19,7 +19,7 @@ HcaRvaHeaderStruct = Struct(">4sf")
 class HCA:
     """HCA class for decoding and encoding HCA files
 
-    NOTE: Direct usage of this class is not recommended, use the `HCACodec` wrapper instead.
+    **NOTE:** Direct usage of this class is not recommended, use the `HCACodec` wrapper instead.
     """
     stream: BinaryIO
     hcastream: BinaryIO
@@ -316,7 +316,7 @@ class HCA:
 
 
 class HCACodec(HCA):
-    """HCA codec class for encoding and decoding HCA files, from and to WAV."""
+    """Use this class for encoding and decoding HCA files, from and to WAV."""
     CHUNK_INTERVAL = 64
     BASE_FRAMERATE = 2997 # dt = CHUNK_INTERVAL / BASE_FRAMERATE
     AUDIO_CODEC = 4

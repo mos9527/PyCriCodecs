@@ -8,6 +8,7 @@ from struct import unpack, calcsize, pack
 from PyCriCodecsEx.chunk import *
 
 class UTF:
+    """Use this class to unpack @UTF table binary payload."""
 
     _dictarray: list
 
@@ -290,6 +291,7 @@ class UTF:
         return self._dictarray
 
 class UTFBuilder:
+    """Use this class to build UTF table binary payloads from a `dictarray`."""
 
     encoding: str
     dictarray: list
@@ -591,34 +593,16 @@ class UTFBuilder:
         return dataarray
 
 class UTFViewer:
+    """Use this class to create dataclass-like access to `dictarray`s."""
+
     _payload: dict
 
     def __init__(self, payload):
         """Construct a non-owning read-write, deletable view of a UTF table dictarray.
-        Nested classes are supported.
-        Sorting (using .sort()) is done in-place and affects the original payload.
 
-        Example:
-        ```python
-            class CueNameTable(UTFViewer):
-                CueName : str
-                CueIndex : int
-            class ACBTable(UTFViewer):
-                CueNameTable : List[CueNameTable]
-                Awb : AWB
-            src = ACB(ACB_sample)
-            payload = ACBTable(src.payload)
-            >>> Referencing items through Python is allowed
-            name = payload.CueNameTable
-            >>> Lists can be indexed
-            name_str = name[0].CueName
-            >>> Deleting items from lists is also allowed
-            src.view.CueNameTable.pop(1)
-            src.view.CueTable.pop(1)
-            >>> The changes will be reflected in the original UTF payload
-            
-            See __new__ for the actual constructor.
-        ```
+        Nested classes are supported.
+
+        Sorting (using .sort()) is done in-place and affects the original payload.
         """
         assert isinstance(payload, dict), "payload must be a dictionary."
         super().__setattr__("_payload", payload)

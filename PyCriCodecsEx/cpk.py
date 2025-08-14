@@ -48,6 +48,7 @@ class _TOC():
         self.table = UTF(self.stream.read()).table
 
 class CPK:
+    """Use this class to load CPK file table-of-content, and read files from them on-demand."""
     magic: bytes
     encflag: int
     packet_size: int
