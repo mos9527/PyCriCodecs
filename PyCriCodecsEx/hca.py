@@ -209,32 +209,28 @@ class HCA:
                     raise ValueError(f"WAV bitdepth of {self.fmtBitCount} is not supported, only 16 bit WAV files are supported.")
                 elif self.fmtSize != 16:
                     raise ValueError(f"WAV file has an FMT chunk of an unsupported size: {self.fmtSize}, the only supported size is 16.")
-                if self.stream.read(4) == b"smpl":
-                    self.stream.seek(-4, 1)
-                    self.looping = True
-                    # Will just be naming the important things here.
-                    smplsig, smplesize, _, _, _, _, _, _, _, self.LoopCount, _, _, _, self.LoopStartSample, self.LoopEndSample, _, _ = WavSmplHeaderStruct.unpack(
-                        self.stream.read(WavSmplHeaderStruct.size)
-                    )
-                    if self.LoopCount != 1:
-                        self.looping = False # Unsupported multiple looping points, so backtracks, and ignores looping data.
-                        self.stream.seek(-WavSmplHeaderStruct.size, 1)
-                        self.stream.seek(8 + smplesize, 1)
-                else:
-                    self.stream.seek(-4, 1)
-                    self.looping = False
-                if self.stream.read(4) == b"note": # There's no use for this on ADX.
-                    len = self.stream.read(4)
-                    self.stream.seek(len+4) # + 1? + padding maybe?
-                else:
-                    self.stream.seek(-4, 1)
-                if self.stream.read(4) == b"data":
-                    self.stream.seek(-4, 1)
-                    self.dataSig, self.dataSize = WavDataHeaderStruct.unpack(
-                        self.stream.read(WavDataHeaderStruct.size)
-                    )
-                else:
-                    raise ValueError("Invalid or an unsupported wav file.")
+                while (hdr := self.stream.read(4)):
+                    size = int.from_bytes(self.stream.read(4), 'little')
+                    size += (size & 1) # padding
+                    offset = self.stream.tell()
+                    match hdr:
+                        case b"smpl":
+                            self.stream.seek(-4, 1)
+                            self.looping = True
+                            # Will just be naming the important things here.
+                            smplsig, smplesize, _, _, _, _, _, _, _, self.LoopCount, _, _, _, self.LoopStartSample, self.LoopEndSample, _, _ = WavSmplHeaderStruct.unpack(
+                                self.stream.read(WavSmplHeaderStruct.size)
+                            )
+                            if self.LoopCount != 1:
+                                self.looping = False # Unsupported multiple looping points, so backtracks, and ignores looping data.
+                                self.stream.seek(-WavSmplHeaderStruct.size, 1)
+                                self.stream.seek(8 + smplesize, 1)
+                        case b"data":
+                            self.stream.seek(-4, 1)
+                            self.dataSig, self.dataSize = WavDataHeaderStruct.unpack(
+                                self.stream.read(WavDataHeaderStruct.size)
+                            )
+                    self.stream.seek(offset + size, 0)
         else:
             raise ValueError("Invalid HCA or WAV file.")
         self.stream.seek(0)
