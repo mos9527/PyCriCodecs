@@ -149,7 +149,7 @@ class ADXCodec(ADX):
         return self.adx
 
     def save(self, filepath: str):
-        """Saves the encoded ADX audio to filepath"""
+        """Saves the decoded WAV audio to filepath"""
         with open(filepath, "wb") as f:
             f.write(self.decode(self.adx))
 
