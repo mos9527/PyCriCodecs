@@ -52,6 +52,7 @@ class AWB:
 
     def get_files(self):
         """ Generator function to yield all data blobs from an AWB. """
+        self.stream.seek(self.headersize, 0)
         for i in range(1, len(self.ofs)):
             data = self.stream.read((self.ofs[i]-self.ofs[i-1]))
             self.stream.seek(self.ofs[i], 0)
@@ -59,10 +60,8 @@ class AWB:
     
     def get_file_at(self, index):
         """ Gets you a file at specific index. """
-        index += 1
         self.stream.seek(self.ofs[index], 0)
-        data = self.stream.read(self.ofs[index]-self.ofs[index-1])
-        self.stream.seek(self.headersize, 0) # Seeks back to headersize for getfiles.
+        data = self.stream.read(self.ofs[index + 1]-self.ofs[index])
         return data
 
     def stringtypes(self, intsize: int) -> str:

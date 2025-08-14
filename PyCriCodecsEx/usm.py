@@ -332,7 +332,7 @@ class HCACodec(HCA):
 
     filesize: int
 
-    def __init__(self, stream: str | bytes, filename: str, quality: CriHcaQuality = CriHcaQuality.High, key=0, subkey=0, **kwargs):
+    def __init__(self, stream: str | bytes, filename: str = "default.hca", quality: CriHcaQuality = CriHcaQuality.High, key=0, subkey=0, **kwargs):
         self.filename = filename
         super().__init__(stream, key, subkey)
         if self.filetype == "wav":
@@ -433,6 +433,12 @@ class HCACodec(HCA):
         p.strings = b"<NULL>\x00" + p.strings
         return p.bytes()
 
+    def get_encoded(self):
+        self.hcastream.seek(0)
+        res = self.hcastream.read()
+        self.hcastream.seek(0)
+        return res
+    
     def save(self, filepath: str):
         """Saves the decoded WAV audio to filepath"""
         with open(filepath, "wb") as f:
@@ -468,7 +474,7 @@ class ADXCodec(ADX):
     total_samples: int
     avbps: int
 
-    def __init__(self, stream: str | bytes, filename: str, bitdepth: int = 4, **kwargs):
+    def __init__(self, stream: str | bytes, filename: str = "default.adx", bitdepth: int = 4, **kwargs):
         if type(stream) == str:
             self.adx = open(stream, "rb").read()
         else:
@@ -481,8 +487,8 @@ class ADXCodec(ADX):
         self.sfaStream = BytesIO(self.adx)
         header = AdxHeaderStruct.unpack(self.sfaStream.read(AdxHeaderStruct.size))
         FourCC, self.AdxDataOffset, self.AdxEncoding, self.AdxBlocksize, self.AdxSampleBitdepth, self.AdxChannelCount, self.AdxSamplingRate, self.AdxSampleCount, self.AdxHighpassFrequency, self.AdxVersion, self.AdxFlags = header
-        assert FourCC == 0x8000, "Either ADX or WAV is supported"
-        assert self.AdxVersion in {3,4}, "Unsupported ADX version"
+        assert FourCC == 0x8000, "either ADX or WAV is supported"
+        assert self.AdxVersion in {3,4}, "unsupported ADX version"
         if self.AdxVersion == 4:
             self.sfaStream.seek(4 + 4  * self.AdxChannelCount, 1)  # Padding + Hist values, they always seem to be 0.
         self.sfaStream.seek(0)
@@ -551,6 +557,9 @@ class ADXCodec(ADX):
 
     def get_metadata(self):
         return None
+
+    def get_encoded(self):
+        return self.adx
 
     def save(self, filepath: str):
         """Saves the encoded ADX audio to filepath"""

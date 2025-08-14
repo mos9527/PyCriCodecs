@@ -1,6 +1,8 @@
 from typing import BinaryIO, TypeVar, Type, List
+from copy import deepcopy
 
 T = TypeVar("T")
+Ty = TypeVar("Ty", bound="UTFViewer")
 from io import BytesIO, FileIO
 from struct import unpack, calcsize, pack
 from PyCriCodecsEx.chunk import *
@@ -302,7 +304,7 @@ class UTFBuilder:
 
     def __init__(
         self,
-        dictarray: list[dict],
+        dictarray_src: list[dict],
         encrypt: bool = False,
         encoding: str = "utf-8",
         table_name: str = "PyCriCodecs_table",
@@ -311,14 +313,14 @@ class UTFBuilder:
         """Packs UTF payload back into their binary form
         
         Args:
-            dictarray: A list of dictionaries representing the UTF table.
+            dictarray_src: list[dict]: A list of dictionaries representing the UTF table.
             encrypt: Whether to encrypt the table (default: False).
             encoding: The character encoding to use (default: "utf-8").
             table_name: The name of the table (default: "PyCriCodecs_table").
             ignore_recursion: Whether to ignore recursion when packing (default: False).
         """
-        assert type(dictarray) == list, "dictarray must be a list of dictionaries (see UTF.dictarray)."
-
+        assert type(dictarray_src) == list, "dictarray must be a list of dictionaries (see UTF.dictarray)."
+        dictarray = deepcopy(dictarray_src)
         # Preprocess for nested dictarray types
         def dfs(payload: list[dict], name: str) -> None:
             for dict in range(len(payload)):
@@ -618,7 +620,7 @@ class UTFViewer:
             See __new__ for the actual constructor.
         ```
         """
-        assert isinstance(payload, dict), "Payload must be a dictionary."
+        assert isinstance(payload, dict), "payload must be a dictionary."
         super().__setattr__("_payload", payload)
 
     def __getattr__(self, item):
@@ -643,7 +645,9 @@ class UTFViewer:
     def __setattr__(self, item, value):
         payload = super().__getattribute__("_payload")
         if item not in payload:
-            raise AttributeError(f"{item} not in payload")
+            raise AttributeError(f"{item} not in payload. UTFViewer should not store extra states")
+        if isinstance(value, dict) or isinstance(value, list):
+            raise AttributeError(f"Dict or list assignment is not allowed as this may potentially change the table layout. Access by elements and use list APIs instead")
         typeof, _ = payload[item]
         payload[item] = (typeof, value)
 
@@ -659,9 +663,9 @@ class UTFViewer:
 
     class ListView(list):
         _payload : List[dict]
-        def __init__(self, payload: list[T]):
+        def __init__(self, clazz : Type[Ty], payload: list[Ty]):
             self._payload = payload
-            super().__init__([UTFViewer(item) for item in payload])
+            super().__init__([clazz(item) for item in payload])
 
         def pop(self, index = -1):
             self._payload.pop(index)
@@ -669,7 +673,7 @@ class UTFViewer:
         
         def append(self, o : "UTFViewer"):
             if len(self):
-                assert type(self[0]) == type(o), "all items in the list must be of the same type."
+                assert isinstance(o, UTFViewer) and type(self[0]) == type(o), "all items in the list must be of the same type, and must be an instance of UTFViewer."
             self._payload.append(o._payload)
             return super().append(o)
         
@@ -677,9 +681,9 @@ class UTFViewer:
             for item in iterable:
                 self.append(item)
 
-        def insert(self, index, o : "UTFViewer"):
+        def insert(self, index, o : "UTFViewer"):         
             if len(self):
-                assert type(self[0]) == type(o), "all items in the list must be of the same type."            
+                assert isinstance(o, UTFViewer) and type(self[0]) == type(o), "all items in the list must be of the same type, and must be an instance of UTFViewer."
             self._payload.insert(index, o._payload)
             return super().insert(index, o)
 
@@ -698,7 +702,7 @@ class UTFViewer:
             self._payload[:] = [self._payload[i] for x,i in p]     
             self[:] = [x for x,i in p]            
 
-    def __new__(cls: Type[T], payload: list | dict, **args) -> T | List[T]:
+    def __new__(cls: Type[Ty], payload: list | dict, **args) -> Ty | List[Ty]:
         if isinstance(payload, list):
-            return UTFViewer.ListView(payload)
+            return UTFViewer.ListView(cls, payload)
         return super().__new__(cls)

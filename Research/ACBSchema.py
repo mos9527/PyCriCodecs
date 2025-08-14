@@ -2,6 +2,8 @@ from PyCriCodecsEx import *
 from PyCriCodecsEx import UTFTypeValues as T
 
 # Taken from Tests/ACB/0001_01.acb
+# !!! NOTE: Ordering matters and this sample is out-of-order!
+# !!! Refer to newer decode results for accurate info
 {
     "AcbGuid": (T.bytes, b"U\x0f?4 \xbaqF\x93\xad\x1a?\xfd\xba\xec4"),    
     # Different across files
@@ -36,6 +38,7 @@ from PyCriCodecsEx import UTFTypeValues as T
         {
             "AisacControlMap": (T.bytes, b""),
             "CueId": (T.uint, 0),
+            # ? Guaranteed to be ordered by this key?
             "HeaderVisibility": (T.uchar, 1),
             "Length": (T.uint, 132200),
             # In milliseconds
@@ -317,9 +320,12 @@ from PyCriCodecsEx import UTFTypeValues as T
             "MemoryAwbId": (T.ushort, 0),
             # Indexes into AwbFile
             "NumChannels": (T.uchar, 2),
+            # Channel count
+            # * This doesn't have to be accurate
             "NumSamples": (T.uint, 5830020),
             # Total sample *per channel* from AWB content
             # = 132.2 * 44100 
+            # * This doesn't have to be accurate
             "SamplingRate": (T.ushort, 44100),
             "StreamAwbId": (T.ushort, 0xFFFF),
             "StreamAwbPortNo": (T.ushort, 0xFFFF),

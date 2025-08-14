@@ -1,10 +1,9 @@
-from struct import iter_unpack
-from typing import BinaryIO, List
-from io import BytesIO
+from typing import Generator, List, Tuple
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder, UTFViewer
+from PyCriCodecsEx.usm import HCACodec, ADXCodec
 from PyCriCodecsEx.awb import AWB, AWBBuilder
-from PyCriCodecsEx.hca import HCA
+from dataclasses import dataclass
 from copy import deepcopy
 import os
 
@@ -20,11 +19,13 @@ class CueNameTable(UTFViewer):
 
 class CueTable(UTFViewer):
     CueId: int
+    Length: int
     ReferenceIndex: int
     ReferenceType: int
 
 
 class SequenceTable(UTFViewer):
+    NumTracks : int
     TrackIndex: bytes
     Type: int
 
@@ -65,6 +66,75 @@ class ACBTable(UTFViewer):
     TrackTable: List[TrackTable]
     WaveformTable: List[WaveformTable]
 
+    @staticmethod
+    def decode_tlv(data : bytes):
+        pos = 0
+        while pos < len(data):
+            tag = data[pos : pos + 2]
+            length = data[pos + 3]            
+            value = data[pos + 4 : pos + 4 + length]
+            pos += 3 + length
+            yield (tag, value)
+
+    def waveform_of_track(self, index: int):
+        tlv = self.decode_tlv(self.TrackEventTable[index])
+        def noteOn(data: bytes):
+            # Handle note on event
+            tlv_type, tlv_index = AcbTrackCommandNoteOnStruct.unpack(data[:AcbTrackCommandNoteOnStruct.size])
+            match tlv_type:
+                case 0x02: # Synth
+                    yield from self.waveform_of_synth(tlv_index)
+                case 0x03: # Sequence
+                    yield from self.waveform_of_sequence(tlv_index)
+                # Ignore others silently                
+        for code, data in tlv:
+            match code:
+                case 2000:
+                    yield from noteOn(data)
+                case 2003:
+                    yield from noteOn(data)            
+
+    def waveform_of_sequence(self, index : int):
+        seq = self.SequenceTable[index]
+        for i in range(seq.NumTracks):
+            track_index = int.from_bytes(seq.TrackIndex[i*2:i*2+2], 'big')
+            yield self.WaveformTable[track_index]
+
+    def waveform_of_synth(self, index: int):        
+        item_type, item_index = AcbSynthReferenceStruct.unpack(self.SynthTable[index].ReferenceItems)
+        match item_type:
+            case 0x00: # No audio
+                return
+            case 0x01: # Waveform
+                yield self.WaveformTable[item_index]
+            case 0x02: # Yet another synth...
+                yield from self.waveform_of_synth(item_index)
+            case 0x03: # Sequence
+                yield from self.waveform_of_sequence(item_index)
+            case _:
+                raise NotImplementedError(f"Unknown synth reference type: {item_type} at index {index}")
+
+    def waveform_of(self, index : int) -> List["WaveformTable"]:
+        cue = next(filter(lambda c: c.CueId == index, self.CueTable), None)
+        assert cue, "cue of index %d not found" % index
+        match cue.ReferenceType:
+            case 0x01:
+                return [self.WaveformTable[index]]
+            case 0x02:
+                return list(self.waveform_of_synth(index))
+            case 0x03:
+                return list(self.waveform_of_sequence(index))
+            case 0x08:
+                raise NotImplementedError("BlockSequence type not implemented yet")
+            case _:
+                raise NotImplementedError(f"Unknown cue reference type: {cue.ReferenceType}")
+
+@dataclass(frozen=True)
+class CueItem:
+    CueId: int
+    CueName: str
+    Length: float
+    Waveforms: list[int] # List of waveform IDs
 
 class ACB(UTF):
     """An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place."""
@@ -73,17 +143,108 @@ class ACB(UTF):
 
     @property
     def payload(self) -> dict:
-        """Retrives the only top-level UTF table dict within the ACB file."""
+        """Retrives the only UTF table dict within the ACB file."""
         return self.dictarray[0]
 
     @property
     def view(self) -> ACBTable:
-        """Returns a view of the ACB file, with all known tables mapped to their respective classes."""
+        """Returns a view of the ACB file, with all known tables mapped to their respective classes.
+        
+        * Use this to interact with the ACB payload instead of `payload` for helper functions, etc"""
         return ACBTable(self.payload)
 
-    # TODO: Extraction routines
-    # See Research/ACBSchema.py. vgmstream presented 4 possible permutations of subsong retrieval.
+    @property
+    def name(self) -> str:
+        """Returns the name of the ACB file."""
+        return self.view.Name
 
+    @property
+    def awb(self) -> AWB:
+        """Returns the AWB object associated with the ACB."""
+        return AWB(self.view.AwbFile)
+
+    def get_waveforms(self) -> List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int,  bytes]]:
+        """Returns a list of decoded waveforms.
+
+        Item may be a codec (if known), or a tuple of (Codec ID, Channel Count, Sample Count, Sample Rate, Raw data).
+        """
+        CODEC_TABLE = {
+            AcbEncodeTypes.ADX: ADXCodec,
+            AcbEncodeTypes.HCA: HCACodec, # HCA-MX
+            AcbEncodeTypes.HCAMX: HCACodec, # HCA-MX
+        }
+        awb = self.awb
+        wavs = []        
+        for wav in self.view.WaveformTable:
+            encode = AcbEncodeTypes(wav.EncodeType)
+            codec = (CODEC_TABLE.get(encode, None))
+            if codec:
+                wavs.append(codec(awb.get_file_at(wav.MemoryAwbId)))
+            else:
+                wavs.append((encode, wav.NumChannels, wav.NumSamples, wav.SamplingRate, awb.get_file_at(wav.MemoryAwbId)))
+        return wavs
+
+    def set_waveforms(self, value: List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int, bytes]]):
+        """Sets the waveform data.
+
+        Input item may be a codec (if known), or a tuple of (Codec ID, Channel Count, Sample Count, Sample Rate, Raw data).
+
+        NOTE: Cue duration is not set. You need to change that manually.
+        """
+        WAVEFORM = self.view.WaveformTable[0]._payload.copy()
+        encoded = []
+        tables = self.view.WaveformTable
+        tables.clear()
+        for i, codec in enumerate(value):
+            if type(codec) == HCACodec:
+                encoded.append(codec.get_encoded())
+                tables.append(WaveformTable(WAVEFORM.copy()))
+                entry = tables[-1]
+                entry.EncodeType = AcbEncodeTypes.HCA.value
+                entry.NumChannels = codec.chnls
+                entry.NumSamples = codec.total_samples
+                entry.SamplingRate = codec.sampling_rate
+            elif type(codec) == ADXCodec:
+                encoded.append(codec.get_encoded())
+                tables.append(WaveformTable(WAVEFORM.copy()))
+                entry = tables[-1]
+                entry.EncodeType = AcbEncodeTypes.ADX.value
+                entry.NumChannels = codec.chnls
+                entry.NumSamples = codec.total_samples
+                entry.SamplingRate = codec.sampling_rate                
+            elif isinstance(codec, tuple):
+                e_type, e_channels, e_samples, e_rate, e_data = codec
+                encoded.append(e_data)
+                tables.append(WaveformTable(WAVEFORM.copy()))
+                entry = tables[-1]
+                entry.EncodeType = e_type.value
+                entry.NumChannels = e_channels
+                entry.NumSamples = e_samples
+                entry.SamplingRate = e_rate
+            else:
+                raise TypeError(f"Unsupported codec type: {type(codec)}")
+            tables[-1].MemoryAwbId = i
+        awb = self.awb
+        self.view.AwbFile = AWBBuilder(encoded, awb.subkey, awb.version, align=awb.align).build()
+        pass
+
+    @property
+    def cues(self) -> Generator[CueItem, None, None]:
+        """Returns a generator of **read-only** Cues.
+
+        Cues reference waveform bytes by their AWB IDs, which can be accessed via `waveforms`.
+        To modify cues, use the `view` property instead.
+        """
+        for name, cue in zip(self.view.CueNameTable, self.view.CueTable):
+            waveforms = self.view.waveform_of(cue.CueId)
+            yield CueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
+
+# Building ACB from scratch isn't planned for now since:
+# * We don't know how SeqCommandTable TLVs work. This is the biggest issue.
+# - Many fields are unknown or not well understood
+#   - Games may expect AcfReferenceTable, Asiac stuff etc to be present for their own assets in conjunction
+#     with their own ACF table. Missing these is not a fun debugging experience.
+# Maybe one day I'll get around to this. But WONTFIX for now.
 class ACBBuilder:
     acb: ACB
 
@@ -95,6 +256,9 @@ class ACBBuilder:
 
         The object may be modified in place before building, which will be reflected in the output binary.
         """
-        payload = deepcopy(self.acb.dictarray)
-        binary = UTFBuilder(payload, encoding=self.acb.encoding, table_name=self.acb.table_name)
+        # Check whether all AWB indices are valid
+        assert all(
+            waveform.MemoryAwbId < self.acb.awb.numfiles for waveform in self.acb.view.WaveformTable
+        ), "one or more AWB indices are out of range"
+        binary = UTFBuilder(self.acb.dictarray, encoding=self.acb.encoding, table_name=self.acb.table_name)
         return binary.bytes()

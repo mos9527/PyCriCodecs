@@ -12,7 +12,8 @@ WavNoteHeaderStruct = Struct("<4sII")
 WavDataHeaderStruct = Struct("<4sI")
 AdxHeaderStruct = Struct(">HHBBBBIIHBB")
 AdxLoopHeaderStruct = Struct(">HHHHIIII")
-
+AcbSynthReferenceStruct = Struct(">HH")
+AcbTrackCommandNoteOnStruct = Struct(">HH")
 class USMChunckHeaderType(Enum):
     CRID  = b"CRID" # Header.
     SFSH  = b"SFSH" # SofDec1 Header?
@@ -73,3 +74,24 @@ class CriHcaQuality(Enum):
     Middle  = 2
     Low     = 3
     Lowest  = 5
+
+class AcbEncodeTypes(Enum):
+    ADX = 0
+    PCM = 1
+    HCA = 2
+    ADX_ALT = 3
+    WiiDSP = 4
+    NDSDSP = 5
+    HCAMX = 6
+    VAG = 7
+    ATRAC3 = 8
+    CWAV = 9
+    HEVAG = 10
+    ATRAC9 = 11
+    X360XMA = 12
+    DSP = 13
+    CWACDSP = 14
+    PS4HEVAG = 15
+    PS4ATRAC9 = 16
+    AACM4A = 17
+    SwitchOpus = 18
