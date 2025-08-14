@@ -1,5 +1,5 @@
 import os
-from typing import BinaryIO
+from typing import BinaryIO, Generator
 from io import BytesIO, FileIO
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder
@@ -14,7 +14,8 @@ def _worker_do_compression(src : str, dst: str):
         compressed = CriCodecsEx.CriLaylaCompress(data)
         fdst.write(compressed)
 @dataclass
-class _PackFile():
+class PackedFile():
+    """Helper class for packed files within a CPK."""
     stream: BinaryIO
     path: str
     offset: int   
@@ -22,6 +23,7 @@ class _PackFile():
     compressed : bool = False
 
     def get_bytes(self) -> bytes:
+        """Get the raw bytes of the packed file, decompressing if necessary."""
         self.stream.seek(self.offset)
         data = self.stream.read(self.size)
         if self.compressed:
@@ -29,6 +31,7 @@ class _PackFile():
         return data
 
     def save(self, path : str):
+        """Save the packed file to a specified path."""
         with open(path, "wb") as f:
             f.write(self.get_bytes())
 class _TOC():
@@ -115,6 +118,9 @@ class CPK:
     
     @property
     def mode(self):
+        """Get the current mode of the CPK archive. [0,1,2,3]
+        
+        See also CPKBuilder"""
         TOC, ITOC, GTOC = 'TOC' in self.tables, 'ITOC' in self.tables, 'GTOC' in self.tables
         if TOC and ITOC and GTOC:
             return 3
@@ -127,8 +133,8 @@ class CPK:
         raise ValueError("Unknown CPK mode.")
 
     @property
-    def files(self):
-        """Retrieves a list of all files in the CPK archive."""
+    def files(self) -> Generator[PackedFile, None, None]:
+        """Creates a generator for all files in the CPK archive as PackedFile."""
         if "TOC" in self.tables:
             toctable = self.tables['TOC']
             rel_off = 0x800
@@ -139,10 +145,10 @@ class CPK:
                     filename = filename[:250] + "_" + str(i) # 250 because i might be 4 digits long.
                 if toctable['ExtractSize'][i] > toctable['FileSize'][i]:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    yield _PackFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i], compressed=True)
+                    yield PackedFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i], compressed=True)
                 else:
                     self.stream.seek(rel_off+toctable["FileOffset"][i], 0)
-                    yield _PackFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i])                    
+                    yield PackedFile(self.stream, os.path.join(dirname,filename), self.stream.tell(), toctable['FileSize'][i])                    
         elif "ITOC" in self.tables:
             toctableL = self.tables["ITOC"]['DataL'][0]
             toctableH = self.tables["ITOC"]['DataH'][0]
@@ -154,18 +160,18 @@ class CPK:
                 if i in toctableH['ID']:
                     idx = toctableH['ID'].index(i)
                     if toctableH['ExtractSize'][idx] > toctableH['FileSize'][idx]:
-                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx], compressed=True)
+                        yield PackedFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx], compressed=True)
                     else:
-                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx])
+                        yield PackedFile(self.stream, str(i), self.stream.tell(), toctableH['FileSize'][idx])
                     if toctableH['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableH['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
                 elif i in toctableL['ID']:
                     idx = toctableL['ID'].index(i)
                     if toctableL['ExtractSize'][idx] > toctableL['FileSize'][idx]:
-                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx], compressed=True)
+                        yield PackedFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx], compressed=True)
                     else:
-                        yield _PackFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx])
+                        yield PackedFile(self.stream, str(i), self.stream.tell(), toctableL['FileSize'][idx])
                     if toctableL['FileSize'][idx] % align != 0:
                         seek_size = (align - toctableL['FileSize'][idx] % align)
                         self.stream.seek(seek_size, 1)
