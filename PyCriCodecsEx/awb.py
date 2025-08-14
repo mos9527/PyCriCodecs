@@ -19,16 +19,21 @@ class AWB:
     headersize: int
     id_alignment: int
 
-    def __init__(self, stream) -> None:
+    def __init__(self, stream : str | BinaryIO) -> None:
+        """Initializes the AWB object
+
+        Args:
+            stream (str | BinaryIO): Source file path or binary stream
+        """
         if type(stream) == str:
             self.stream = FileIO(stream)
             self.filename = stream
         else:
             self.stream = BytesIO(stream)
             self.filename = ""
-        self.readheader()
+        self._readheader()
     
-    def readheader(self):
+    def _readheader(self):
         # Reads header.
         magic, self.version, offset_intsize, self.id_intsize, self.numfiles, self.align, self.subkey = AWBChunkHeader.unpack(
             self.stream.read(AWBChunkHeader.size)
@@ -39,9 +44,9 @@ class AWB:
         # Reads data in the header.
         self.ids = list()
         self.ofs = list()
-        for i in iter_unpack(f"<{self.stringtypes(self.id_intsize)}", self.stream.read(self.id_intsize*self.numfiles)):
+        for i in iter_unpack(f"<{self._stringtypes(self.id_intsize)}", self.stream.read(self.id_intsize*self.numfiles)):
             self.ids.append(i[0])
-        for i in iter_unpack(f"<{self.stringtypes(offset_intsize)}", self.stream.read(offset_intsize*(self.numfiles+1))):
+        for i in iter_unpack(f"<{self._stringtypes(offset_intsize)}", self.stream.read(offset_intsize*(self.numfiles+1))):
             self.ofs.append(i[0] if i[0] % self.align == 0 else (i[0] + (self.align - (i[0] % self.align))))
         
         # Seeks to files offset.
@@ -51,20 +56,20 @@ class AWB:
         self.stream.seek(self.headersize, 0)
 
     def get_files(self):
-        """ Generator function to yield all data blobs from an AWB. """
+        """Generator function to yield all data blobs from an AWB. """
         self.stream.seek(self.headersize, 0)
         for i in range(1, len(self.ofs)):
             data = self.stream.read((self.ofs[i]-self.ofs[i-1]))
             self.stream.seek(self.ofs[i], 0)
             yield data
     
-    def get_file_at(self, index):
-        """ Gets you a file at specific index. """
+    def get_file_at(self, index) -> bytes:
+        """Gets you a file at specific index. """
         self.stream.seek(self.ofs[index], 0)
         data = self.stream.read(self.ofs[index + 1]-self.ofs[index])
         return data
 
-    def stringtypes(self, intsize: int) -> str:
+    def _stringtypes(self, intsize: int) -> str:
         if intsize == 1:
             return "B" # Probably impossible.
         elif intsize == 2:
@@ -78,6 +83,15 @@ class AWB:
 
 class AWBBuilder:
     def __init__(self, infiles: list[bytes], subkey: int = 0, version: int = 2, id_intsize = 0x2, align: int = 0x20) -> None:
+        """Initializes the AWB builder.
+
+        Args:
+            infiles (list[bytes]): List of bytes to be included in the AWB file.
+            subkey (int, optional): AWB subkey. Defaults to 0.
+            version (int, optional): AWB version. Defaults to 2.
+            id_intsize (hexadecimal, optional): Integer size (in bytes) for string lengths. Defaults to 0x2.
+            align (int, optional): Alignment. Defaults to 0x20.
+        """
         if version == 1 and subkey != 0:
             raise ValueError("Cannot have a subkey with AWB version of 1.")
         elif id_intsize not in [0x2, 0x4, 0x8]:
@@ -88,7 +102,7 @@ class AWBBuilder:
         self.subkey = subkey
         self.id_intsize = id_intsize
         
-    def stringtypes(self, intsize: int) -> str:
+    def _stringtypes(self, intsize: int) -> str:
         if intsize == 1:
             return "B" # Probably impossible.
         elif intsize == 2:
@@ -101,6 +115,7 @@ class AWBBuilder:
             raise ValueError("Unknown int size.")
 
     def build(self) -> bytes:
+        """Builds the AWB file from the provided infiles bytes."""
         size = 0
         ofs = []
         numfiles = 0
@@ -121,7 +136,7 @@ class AWBBuilder:
             b'AFS2', self.version, intsize, self.id_intsize, numfiles, self.align, self.subkey
         )
 
-        id_strsize = f"<{self.stringtypes(self.id_intsize)}"
+        id_strsize = f"<{self._stringtypes(self.id_intsize)}"
         for i in range(numfiles):
             header += pack(id_strsize, i)
         

@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from tempfile import NamedTemporaryFile
 import CriCodecsEx
 
-def worker_do_compression(src : str, dst: str):
+def _worker_do_compression(src : str, dst: str):
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
         data = fsrc.read()
         compressed = CriCodecsEx.CriLaylaCompress(data)
@@ -55,7 +55,12 @@ class CPK:
     stream: BinaryIO
     tables: dict
     filename: str
-    def __init__(self, filename) -> None:
+    def __init__(self, filename : str | BinaryIO) -> None:
+        """Loads a CPK archive's table-of-content and ready for file reading.
+
+        Args:
+            filename (str | BinaryIO): The path to the CPK file or a BinaryIO stream containing the CPK data.
+        """
         if type(filename) == str:
             self.filename = filename
             self.stream = FileIO(filename)
@@ -271,7 +276,7 @@ class CPKBuilder:
                 futures = []
                 for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
                     if compress:
-                        futures.append(exec.submit(worker_do_compression, src, dst))
+                        futures.append(exec.submit(_worker_do_compression, src, dst))
                 for i, fut in as_completed(futures):
                     try:
                         fut.result()
@@ -281,7 +286,7 @@ class CPKBuilder:
         else:
             for i, ((src, _, _), (dst, compress)) in enumerate(zip(self.in_files,self.os_files)):
                     if compress:
-                        worker_do_compression(src, dst)
+                        _worker_do_compression(src, dst)
                         self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(self.in_files))
         for (src, filename, _) , (dst, _) in zip(self.in_files,self.os_files):
             file_size = os.stat(src).st_size         

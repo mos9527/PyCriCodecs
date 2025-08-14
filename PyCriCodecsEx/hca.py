@@ -46,7 +46,14 @@ class HCA:
     table: array
     looping: bool
 
-    def __init__(self, stream: BinaryIO, key: int = 0, subkey: int = 0) -> None:
+    def __init__(self, stream: str | BinaryIO, key: int = 0, subkey: int = 0) -> None:
+        """Initializes the HCA encoder/decoder
+
+        Args:
+            stream (str | BinaryIO): Path to the HCA or WAV file, or a BinaryIO stream.
+            key (int, optional): HCA key. Defaults to 0.
+            subkey (int, optional): HCA subkey. Defaults to 0.
+        """
         if type(stream) == str:
             self.stream = FileIO(stream)
             self.hcastream = FileIO(stream)
@@ -66,10 +73,10 @@ class HCA:
         self.hcabytes: bytearray = b''
         self.enc_table: array = b''
         self.table: array = b''
-        self.Pyparse_header()
+        self._Pyparse_header()
     
 
-    def Pyparse_header(self) -> None:
+    def _Pyparse_header(self) -> None:
         self.HcaSig, self.version, self.header_size = HcaHeaderStruct.unpack(
             self.hcastream.read(HcaHeaderStruct.size)
         )
@@ -230,7 +237,7 @@ class HCA:
         self.hcastream.seek(0)
     
     def info(self) -> dict:
-        """ Returns info related to the input file. """
+        """Returns info related to the input file. """
         if self.filetype == "hca":
             return self.hca
         elif self.filetype == "wav":
@@ -238,6 +245,7 @@ class HCA:
             return wav
     
     def decode(self) -> bytes:
+        """Decodes the HCA or WAV file to WAV bytes. """
         if self.filetype == "wav":
             raise ValueError("Input type for decoding must be an HCA file.")
         self.hcastream.seek(0)
@@ -247,6 +255,7 @@ class HCA:
         return bytes(self.wavbytes)
     
     def encode(self, force_not_looping: bool = False, encrypt: bool = False, keyless: bool = False, quality_level: CriHcaQuality = CriHcaQuality.High) -> bytes:
+        """Encodes the WAV file to HCA bytes."""
         if self.filetype == "hca":
             raise ValueError("Input type for encoding must be a WAV file.")
         if force_not_looping == False:
@@ -260,21 +269,21 @@ class HCA:
         self.stream.seek(0)
         self.hcabytes = CriCodecsEx.HcaEncode(self.stream.read(), force_not_looping, quality_level.value)
         self.hcastream = BytesIO(self.hcabytes)
-        self.Pyparse_header()
+        self._Pyparse_header()
         if encrypt:
             if self.key == 0 and not keyless:
                 self.key = 0xCF222F1FE0748978 # Default key.
-            self.encrypt(self.key, keyless)
+            self._encrypt(self.key, keyless)
         return self.get_hca()
  
-    def encrypt(self, keycode: int, subkey: int = 0, keyless: bool = False) -> None:
+    def _encrypt(self, keycode: int, subkey: int = 0, keyless: bool = False) -> None:
         if(self.encrypted):
             raise ValueError("HCA is already encrypted.")
         self.encrypted = True
         enc = CriCodecsEx.HcaCrypt(self.get_hca(), 1, self.header_size, (1 if keyless else 56), keycode, subkey)
         self.hcastream = BytesIO(enc)
 
-    def decrypt(self, keycode: int, subkey: int = 0) -> None:
+    def _decrypt(self, keycode: int, subkey: int = 0) -> None:
         if(not self.encrypted):
             raise ValueError("HCA is already decrypted.")
         self.encrypted = False
@@ -282,20 +291,20 @@ class HCA:
         self.hcastream = BytesIO(dec)
 
     def get_hca(self) -> bytes:
-        """ Use this function to get the HCA file bytes after encrypting or decrypting. """
+        """Get the HCA file bytes after encrypting or decrypting. """
         self.hcastream.seek(0)
         fl: bytes = self.hcastream.read()
         self.hcastream.seek(0)
         return fl
     
     def get_frames(self):
-        """ Generator function to yield Frame number, and Frame data. """
+        """Generator function to yield Frame number, and Frame data. """
         self.hcastream.seek(self.header_size, 0)
         for i in range(self.hca['FrameCount']):
             yield (i, self.hcastream.read(self.hca['FrameSize']))
     
     def get_header(self) -> bytes:
-        """ Use this function to retrieve the HCA Header. """
+        """Get the HCA Header. """
         self.hcastream.seek(0)
         header = self.hcastream.read(self.header_size)
         self.hcastream.seek(0)
