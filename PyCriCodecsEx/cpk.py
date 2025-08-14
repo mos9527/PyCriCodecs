@@ -189,7 +189,7 @@ class CPKBuilder:
     ContentSize: int
     EnabledDataSize: int
     EnabledPackedSize: int
-    outfile: str
+    outfile: BinaryIO
     init_toc_len: int # This is a bit of a redundancy, but some CPK's need it.
 
     in_files : list[tuple[str, str, bool]] # (source path, dest filename, compress or not)
@@ -254,14 +254,13 @@ class CPKBuilder:
         
         self.in_files.append((src, dst, compress))
 
-    def _writetofile(self, header) -> None:
-        with open(self.outfile, "wb") as out:
-            out.write(header)
-            for i, ((path, _), (filename, file_size, pack_size)) in enumerate(zip(self.os_files, self.files)):
-                src = open(path, 'rb').read()
-                out.write(src)
-                out.write(bytes(0x800 - pack_size % 0x800))
-                self.progress_cb("Write %s" % os.path.basename(filename), i + 1, len(self.files))
+    def _writetofile(self, header) -> None:        
+        self.outfile.write(header)
+        for i, ((path, _), (filename, file_size, pack_size)) in enumerate(zip(self.os_files, self.files)):
+            src = open(path, 'rb').read()
+            self.outfile.write(src)
+            self.outfile.write(bytes(0x800 - pack_size % 0x800))
+            self.progress_cb("Write %s" % os.path.basename(filename), i + 1, len(self.files))
 
     def _populate_files(self, parallel : bool):
         self.files = []
@@ -304,12 +303,12 @@ class CPKBuilder:
                 pass
         self.os_files = []
 
-    def save(self, outfile : str, parallel : bool = False):
+    def save(self, outfile : str | BinaryIO, parallel : bool = False):
         """Build and save the bundle into a file
 
 
         Args:
-            outfile (str): The output file path.
+            outfile (str | BinaryIO): The output file path or a writable binary stream.
             parallel (bool, optional): Whether to use parallel processing for file compression (if at all used). Defaults to False.
 
         NOTE: 
@@ -318,6 +317,8 @@ class CPKBuilder:
         """
         assert self.in_files, "cannot save empty bundle"
         self.outfile = outfile
+        if type(outfile) == str:
+            self.outfile = open(outfile, "wb")
         self._populate_files(parallel)
         if self.encrypt:
             encflag = 0
@@ -363,7 +364,9 @@ class CPKBuilder:
             data = self.CPKdata.ljust(len(self.CPKdata) + (0x800 - len(self.CPKdata) % 0x800) - 6, b'\x00') + bytearray(b"(c)CRI") + self.ITOCdata
         self._writetofile(data)
         self._cleanup_files()
-    
+        if type(outfile) == str:
+            self.outfile.close()
+            
     def _generate_GTOC(self) -> bytearray:
         # NOTE: Practically useless
         # I have no idea why are those numbers here.

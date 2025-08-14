@@ -23,11 +23,11 @@ class UTF:
     recursive: bool
     encoding : str = 'utf-8'
 
-    def __init__(self, stream, recursive=False):
+    def __init__(self, stream : str | BinaryIO, recursive=False):
         """Unpacks UTF table binary payload
 
         Args:
-            stream (Union[str, bytes]): The input stream or file path to read the UTF table from.
+            stream (Union[str | BinaryIO]): The input stream or file path to read the UTF table from.
             recursive (bool): Whether to recursively unpack nested UTF tables.
         """
         if type(stream) == str:

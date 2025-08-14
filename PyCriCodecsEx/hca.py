@@ -5,7 +5,7 @@ from array import array
 import CriCodecsEx
 
 from PyCriCodecsEx.chunk import *
-
+from PyCriCodecsEx.utf import UTFTypeValues, UTFBuilder
 HcaHeaderStruct = Struct(">4sHH")
 HcaFmtHeaderStruct = Struct(">4sIIHH")
 HcaCompHeaderStruct = Struct(">4sHBBBBBBBBBB")
@@ -17,6 +17,10 @@ HcaCiphHeaderStruct = Struct(">4sH")
 HcaRvaHeaderStruct = Struct(">4sf")
 
 class HCA:
+    """HCA class for decoding and encoding HCA files
+
+    NOTE: Direct usage of this class is not recommended, use the `HCACodec` wrapper instead.
+    """
     stream: BinaryIO
     hcastream: BinaryIO
     HcaSig: bytes
@@ -309,3 +313,143 @@ class HCA:
         header = self.hcastream.read(self.header_size)
         self.hcastream.seek(0)
         return header
+
+
+class HCACodec(HCA):
+    """HCA codec class for encoding and decoding HCA files, from and to WAV."""
+    CHUNK_INTERVAL = 64
+    BASE_FRAMERATE = 2997 # dt = CHUNK_INTERVAL / BASE_FRAMERATE
+    AUDIO_CODEC = 4
+    METADATA_COUNT = 1
+
+    filename: str
+
+    chnls: int
+    sampling_rate: int
+    total_samples: int
+    avbps: int
+
+    filesize: int
+
+    def __init__(self, stream: str | bytes, filename: str = "default.hca", quality: CriHcaQuality = CriHcaQuality.High, key=0, subkey=0, **kwargs):
+        """Initializes the HCA encoder/decoder
+
+        Args:
+            stream (str | bytes): Path to the HCA or WAV file, or a BinaryIO stream. WAV files will be automatically encoded with the given settings first.
+            filename (str, optional): USM filename. Defaults to "default.hca".
+            quality (CriHcaQuality, optional): Encoding quality. Defaults to CriHcaQuality.High.
+            key (int, optional): HCA key. Defaults to 0.
+            subkey (int, optional): HCA subkey. Defaults to 0.
+        """
+        self.filename = filename
+        super().__init__(stream, key, subkey)
+        if self.filetype == "wav":
+            self.encode(
+                force_not_looping=True,
+                encrypt=key != 0,
+                keyless=False,
+                quality_level=quality
+            )
+        self.hcastream.seek(0, 2)
+        self.filesize = self.hcastream.tell()
+        self.hcastream.seek(0)
+
+        if self.filetype == "wav":
+            self.chnls = self.fmtChannelCount
+            self.sampling_rate = self.fmtSamplingRate
+            self.total_samples = int(self.dataSize // self.fmtSamplingSize)
+        else:
+            self.chnls = self.hca["ChannelCount"]
+            self.sampling_rate = self.hca["SampleRate"]
+            self.total_samples = self.hca["FrameCount"]
+        # I don't know how this is derived so I am putting my best guess here. TODO
+        self.avbps = int(self.filesize / self.chnls)
+
+    def generate_SFA(self, index: int, builder):
+        # USMBuilder usage
+        current_interval = 0
+        padding = (
+            0x20 - (self.hca["HeaderSize"] % 0x20)
+            if self.hca["HeaderSize"] % 0x20 != 0
+            else 0
+        )
+        SFA_chunk = USMChunkHeader.pack(
+            USMChunckHeaderType.SFA.value,
+            self.hca["HeaderSize"] + 0x18 + padding,
+            0,
+            0x18,
+            padding,
+            index,
+            0,
+            0,
+            0,
+            current_interval,
+            self.BASE_FRAMERATE,
+            0,
+            0,
+        )
+        SFA_chunk += self.get_header().ljust(self.hca["HeaderSize"] + padding, b"\x00")
+        res = []
+        res.append(SFA_chunk)
+        for i, frame in enumerate(self.get_frames(), start=1):
+            padding = (
+                0x20 - (self.hca["FrameSize"] % 0x20)
+                if self.hca["FrameSize"] % 0x20 != 0
+                else 0
+            )
+            SFA_chunk = USMChunkHeader.pack(
+                USMChunckHeaderType.SFA.value,
+                self.hca["FrameSize"] + 0x18 + padding,
+                0,
+                0x18,
+                padding,
+                index,
+                0,
+                0,
+                0,
+                current_interval,
+                self.BASE_FRAMERATE,
+                0,
+                0,
+            )
+            SFA_chunk += frame[1].ljust(self.hca["FrameSize"] + padding, b"\x00")
+            current_interval = round(i * self.CHUNK_INTERVAL)            
+            res.append(SFA_chunk)
+        else:
+            SFA_chunk = USMChunkHeader.pack(
+                USMChunckHeaderType.SFA.value,
+                0x38,
+                0,
+                0x18,
+                0,
+                index,
+                0,
+                0,
+                2,
+                0,
+                30,
+                0,
+                0,
+            )
+            SFA_chunk += b"#CONTENTS END   ===============\x00"
+            res[-1] += SFA_chunk
+
+        return res
+
+    def get_metadata(self):
+        payload = [dict(hca_header=(UTFTypeValues.bytes, self.get_header()))]
+        p = UTFBuilder(payload, table_name="AUDIO_HEADER")
+        p.strings = b"<NULL>\x00" + p.strings
+        return p.bytes()
+
+    def get_encoded(self):
+        """Gets the encoded HCA audio data."""
+        self.hcastream.seek(0)
+        res = self.hcastream.read()
+        self.hcastream.seek(0)
+        return res
+    
+    def save(self, filepath: str):
+        """Saves the decoded WAV audio to filepath"""
+        with open(filepath, "wb") as f:
+            f.write(self.decode())

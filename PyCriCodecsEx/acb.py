@@ -3,10 +3,11 @@
 # - Original work by https://github.com/Youjose/PyCriCodecs
 # See Research/ACBSchema.py for more details.
 
-from typing import Generator, List, Tuple
+from typing import Generator, List, Tuple, BinaryIO
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder, UTFViewer
-from PyCriCodecsEx.usm import HCACodec, ADXCodec
+from PyCriCodecsEx.hca import HCACodec
+from PyCriCodecsEx.adx import ADXCodec
 from PyCriCodecsEx.awb import AWB, AWBBuilder
 from dataclasses import dataclass
 from copy import deepcopy
@@ -137,8 +138,8 @@ class CueItem:
 
 class ACB(UTF):
     """An ACB is basically a giant @UTF table. Use this class to extract any ACB, and potentially modifiy it in place."""
-    def __init__(self, filename) -> None:
-        super().__init__(filename,recursive=True)
+    def __init__(self, stream : str | BinaryIO) -> None:
+        super().__init__(stream, recursive=True)
 
     @property
     def payload(self) -> dict:
