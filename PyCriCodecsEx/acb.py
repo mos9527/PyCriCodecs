@@ -14,12 +14,16 @@ from copy import deepcopy
 
 class CueNameTable(UTFViewer):
     CueIndex: int
+    '''Index into CueTable'''
     CueName: str
+    '''Name of the cue'''
 
 
 class CueTable(UTFViewer):
     CueId: int
+    '''Corresponds to the cue index found in CueNameTable'''
     Length: int
+    '''Duration of the cue in milliseconds'''
     ReferenceIndex: int
     ReferenceType: int
 
@@ -52,14 +56,21 @@ class WaveformTable(UTFViewer):
 
 
 class ACBTable(UTFViewer):
+    '''ACB Table View'''
+
     AcbGuid: bytes
+    '''GUID of the ACB. This SHOULD be different for each ACB file.'''
     Name: str
-    Version: int
+    '''Name of the ACB. This is usually the name of the sound bank.'''
+    Version: int    
     VersionString: str
 
     AwbFile: bytes
     CueNameTable: List[CueNameTable]
+    '''A list of cue names with their corresponding indices into CueTable'''
     CueTable: List[CueTable]
+    '''A list of cues with their corresponding references'''
+
     SequenceTable: List[SequenceTable]
     SynthTable: List[SynthTable]
     TrackEventTable: List[TrackEventTable]
@@ -67,7 +78,7 @@ class ACBTable(UTFViewer):
     WaveformTable: List[WaveformTable]
 
     @staticmethod
-    def decode_tlv(data : bytes):
+    def _decode_tlv(data : bytes):
         pos = 0
         while pos < len(data):
             tag = data[pos : pos + 2]
@@ -76,16 +87,16 @@ class ACBTable(UTFViewer):
             pos += 3 + length
             yield (tag, value)
 
-    def waveform_of_track(self, index: int):
-        tlv = self.decode_tlv(self.TrackEventTable[index])
+    def _waveform_of_track(self, index: int):
+        tlv = self._decode_tlv(self.TrackEventTable[index])
         def noteOn(data: bytes):
             # Handle note on event
             tlv_type, tlv_index = AcbTrackCommandNoteOnStruct.unpack(data[:AcbTrackCommandNoteOnStruct.size])
             match tlv_type:
                 case 0x02: # Synth
-                    yield from self.waveform_of_synth(tlv_index)
+                    yield from self._waveform_of_synth(tlv_index)
                 case 0x03: # Sequence
-                    yield from self.waveform_of_sequence(tlv_index)
+                    yield from self._waveform_of_sequence(tlv_index)
                 # Ignore others silently                
         for code, data in tlv:
             match code:
@@ -94,13 +105,13 @@ class ACBTable(UTFViewer):
                 case 2003:
                     yield from noteOn(data)            
 
-    def waveform_of_sequence(self, index : int):
+    def _waveform_of_sequence(self, index : int):
         seq = self.SequenceTable[index]
         for i in range(seq.NumTracks):
             track_index = int.from_bytes(seq.TrackIndex[i*2:i*2+2], 'big')
             yield self.WaveformTable[track_index]
 
-    def waveform_of_synth(self, index: int):        
+    def _waveform_of_synth(self, index: int):        
         item_type, item_index = AcbSynthReferenceStruct.unpack(self.SynthTable[index].ReferenceItems)
         match item_type:
             case 0x00: # No audio
@@ -108,22 +119,25 @@ class ACBTable(UTFViewer):
             case 0x01: # Waveform
                 yield self.WaveformTable[item_index]
             case 0x02: # Yet another synth...
-                yield from self.waveform_of_synth(item_index)
+                yield from self._waveform_of_synth(item_index)
             case 0x03: # Sequence
-                yield from self.waveform_of_sequence(item_index)
+                yield from self._waveform_of_sequence(item_index)
             case _:
                 raise NotImplementedError(f"Unknown synth reference type: {item_type} at index {index}")
 
     def waveform_of(self, index : int) -> List["WaveformTable"]:
+        """Retrieves the waveform(s) associated with a cue.
+
+        Cues may reference multiple waveforms, which could also be reused."""
         cue = next(filter(lambda c: c.CueId == index, self.CueTable), None)
         assert cue, "cue of index %d not found" % index
         match cue.ReferenceType:
             case 0x01:
                 return [self.WaveformTable[index]]
             case 0x02:
-                return list(self.waveform_of_synth(index))
+                return list(self._waveform_of_synth(index))
             case 0x03:
-                return list(self.waveform_of_sequence(index))
+                return list(self._waveform_of_sequence(index))
             case 0x08:
                 raise NotImplementedError("BlockSequence type not implemented yet")
             case _:
