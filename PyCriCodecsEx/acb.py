@@ -144,11 +144,17 @@ class ACBTable(UTFViewer):
                 raise NotImplementedError(f"Unknown cue reference type: {cue.ReferenceType}")
 
 @dataclass(frozen=True)
-class CueItem:
+class PackedCueItem:
+    '''Helper class for read-only cue information'''
+
     CueId: int
+    '''Cue ID'''
     CueName: str
+    '''Cue name'''
     Length: float
-    Waveforms: list[int] # List of waveform IDs
+    '''Duration in seconds'''
+    Waveforms: list[int]
+    '''List of waveform IDs, corresponds to ACB.get_waveforms()'''
 
 class ACB(UTF):
     """Use this class to read, and modify ACB files in memory."""
@@ -248,7 +254,7 @@ class ACB(UTF):
         pass
 
     @property
-    def cues(self) -> Generator[CueItem, None, None]:
+    def cues(self) -> Generator[PackedCueItem, None, None]:
         """Returns a generator of **read-only** Cues.
 
         Cues reference waveform bytes by their AWB IDs, which can be accessed via `waveforms`.
@@ -256,7 +262,7 @@ class ACB(UTF):
         """
         for name, cue in zip(self.view.CueNameTable, self.view.CueTable):
             waveforms = self.view.waveform_of(cue.CueId)
-            yield CueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
+            yield PackedCueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
 
 class ACBBuilder:
     """Use this class to build ACB files from an existing ACB object."""
