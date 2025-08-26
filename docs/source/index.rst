@@ -112,7 +112,7 @@ Currently Known Bugs
 
 Examples
 ==========================
-Examples are available at `Tests <https://github.com/mos9527/PyCriCodecsEx/tree/main/Tests>`_.
+.. include:: examples.rst
 
 External Links
 ==========================

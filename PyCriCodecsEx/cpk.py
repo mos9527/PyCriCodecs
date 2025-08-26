@@ -4,11 +4,11 @@ from io import BytesIO, FileIO
 from PyCriCodecsEx.chunk import *
 from PyCriCodecsEx.utf import UTF, UTFBuilder
 from dataclasses import dataclass
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tempfile import NamedTemporaryFile
 import CriCodecsEx
 
-def _worker_do_compression(src : str, dst: str):
+def _crilayla_compress_to_file(src : str, dst: str):
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
         data = fsrc.read()
         compressed = CriCodecsEx.CriLaylaCompress(data)
@@ -269,7 +269,7 @@ class CPKBuilder:
             self.outfile.write(bytes(0x800 - pack_size % 0x800))
             self.progress_cb("Write %s" % os.path.basename(filename), i + 1, len(self.files))
 
-    def _populate_files(self, parallel : bool):
+    def _populate_files(self, threads : int = 1):
         self.files = []
         for src, dst, compress in self.in_files:
             if compress:
@@ -277,23 +277,14 @@ class CPKBuilder:
                 self.os_files.append((tmp.name, True))
             else:
                 self.os_files.append((src, False))
-        if parallel:
-            with ProcessPoolExecutor() as exec:
-                futures = []
-                for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
-                    if compress:
-                        futures.append(exec.submit(_worker_do_compression, src, dst))
-                for i, fut in as_completed(futures):
-                    try:
-                        fut.result()
-                    except:
-                        pass
-                    self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(futures))
-        else:
-            for i, ((src, _, _), (dst, compress)) in enumerate(zip(self.in_files,self.os_files)):
-                    if compress:
-                        _worker_do_compression(src, dst)
-                        self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(self.in_files))
+        with ThreadPoolExecutor(max_workers=threads) as exec:
+            futures = []
+            for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
+                if compress:
+                    futures.append(exec.submit(_crilayla_compress_to_file, src, dst))
+            for i, fut in as_completed(futures):
+                fut.result()
+                self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(futures))
         for (src, filename, _) , (dst, _) in zip(self.in_files,self.os_files):
             file_size = os.stat(src).st_size         
             pack_size = os.stat(dst).st_size
@@ -310,23 +301,22 @@ class CPKBuilder:
                 pass
         self.os_files = []
 
-    def save(self, outfile : str | BinaryIO, parallel : bool = False):
+    def save(self, outfile : str | BinaryIO, threads : int = 1):
         """Build and save the bundle into a file
 
 
         Args:
             outfile (str | BinaryIO): The output file path or a writable binary stream.
-            parallel (bool, optional): Whether to use parallel processing for file compression (if at all used). Defaults to False.
+            threads (int, optional): The number of threads to use for file compression. Defaults to 1.
 
         NOTE: 
             - Temporary files may be created during the process if compression is used.
-            - parallel uses multiprocessing. Make sure your main function is guarded with `if __name__ == '__main__'` clause.
         """
         assert self.in_files, "cannot save empty bundle"
         self.outfile = outfile
         if type(outfile) == str:
             self.outfile = open(outfile, "wb")
-        self._populate_files(parallel)
+        self._populate_files(threads)
         if self.encrypt:
             encflag = 0
         else:

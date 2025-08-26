@@ -199,7 +199,11 @@ unsigned int layla_comp(unsigned char* dest, unsigned int* destLen, unsigned cha
 PyObject* CriLaylaDecompress(PyObject* self, PyObject* d){
 	unsigned char *data = (unsigned char *)PyBytes_AsString(d);
 	crilayla_header header = *(crilayla_header*)data;
+    
+    Py_BEGIN_ALLOW_THREADS
 	unsigned char *out = layla_decomp((data+16), header);
+    Py_END_ALLOW_THREADS
+
     PyObject *outObj = Py_BuildValue("y#", out, header.decompress_size+256);
     delete[] out;
 	return outObj;
@@ -219,7 +223,11 @@ PyObject* CriLaylaCompress(PyObject* self, PyObject* args){
     }
     unsigned char *buf = new unsigned char[data_size];
     memset(buf, 0, data_size);
+
+    Py_BEGIN_ALLOW_THREADS
     layla_comp(buf, &data_size, data, data_size);
+    Py_END_ALLOW_THREADS
+
 	PyObject* bufObj = Py_BuildValue("y#", buf, data_size);
     delete[] buf;
     return bufObj;

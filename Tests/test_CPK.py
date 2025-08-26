@@ -24,7 +24,7 @@ def test_cpk_unpack():
             src = os.path.join(root, f)
             dst = os.path.relpath(src, cpkdir).replace('\\','/')
             print('Adding', src, 'as', dst)
-            cpk.add_file(src, dst, compress=False)
+            cpk.add_file(src, dst, compress=True)
 
     cpk.save(temp_file_path('rebuild.cpk'))
     print('Repack done.')
