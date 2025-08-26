@@ -3296,7 +3296,7 @@ static PyObject* HcaCrypt(PyObject* self, PyObject* args){
     }
 
     unsigned char *buffer = (unsigned char *)view.buf;
-    unsigned int length = view.len;
+    Py_ssize_t length = view.len;
     PyBuffer_Release(&view);
 
     clHCA* hca = (clHCA*)malloc(sizeof(clHCA));
@@ -3345,7 +3345,7 @@ static PyObject* HcaDecode(PyObject* self, PyObject* args){
     data *wavData = &wav.wav.chunks.WAVEdata;
 
     unsigned char *data;
-    unsigned int data_size;
+    Py_ssize_t data_size;
     unsigned int header_size;
     unsigned long long keycode;
     unsigned short subkey;

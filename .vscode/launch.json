@@ -5,13 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) Launch USMDecode",
+            "name": "(gdb) Launch CPK",
             "type": "cppdbg",
             "request": "launch",
             "program": "/opt/miniconda3/bin/python",
             "args": [
                 "-m",
-                "Tests.test_USMDecode"
+                "Tests.test_CPK"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

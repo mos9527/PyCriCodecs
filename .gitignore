@@ -8,3 +8,4 @@ temp_*
 *.pdb
 dist/
 _*
+*.so

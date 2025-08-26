@@ -542,7 +542,7 @@ static PyObject* AdxEncode(PyObject* self, PyObject* args){
         PyAdxSetError(AdxErrorCode);
         return NULL;
     }
-    unsigned int len = adx.size;
+    Py_ssize_t len = adx.size;
     return Py_BuildValue("y#", adxdata, len);
 }
 
@@ -557,6 +557,6 @@ static PyObject* AdxDecode(PyObject* self, PyObject* args){
         return NULL;
     }
     unsigned char *out = wav.WAVEBuffer;
-    unsigned int len = wav.wav.size+8;
+    Py_ssize_t len = wav.wav.size+8;
     return Py_BuildValue("y#", out, len);
 }

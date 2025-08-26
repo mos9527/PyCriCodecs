@@ -20,11 +20,8 @@ class BuildExt(build_ext):
                 compile_args += ['/O2']
         else:
             compile_args = ['-std=c++14']
-            if ENV_DEBUG:
-                # ASAN on Linux
-                # This only works with GCC - you also need to specify 
-                # LD_PRELOAD=$(gcc -print-file-name=libasan.so)
-                compile_args += ['-O0', '-g', '-fsanitize=address']
+            if ENV_DEBUG:                
+                compile_args += ['-O0', '-g']
             else:
                 compile_args += ['-O2']
         for ext in self.extensions:

@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "format": "cpp",
+        "__locale": "cpp",
+        "ios": "cpp",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "ranges": "cpp",
+        "span": "cpp",
+        "vector": "cpp"
+    }
+}
