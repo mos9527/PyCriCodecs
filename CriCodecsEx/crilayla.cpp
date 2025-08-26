@@ -200,10 +200,11 @@ PyObject* CriLaylaDecompress(PyObject* self, PyObject* d){
 	unsigned char *data = (unsigned char *)PyBytes_AsString(d);
 	crilayla_header header = *(crilayla_header*)data;
     
+    unsigned char *out;
     Py_BEGIN_ALLOW_THREADS
-	unsigned char *out = layla_decomp((data+16), header);
+	out = layla_decomp((data+16), header);
     Py_END_ALLOW_THREADS
-
+    
     PyObject *outObj = Py_BuildValue("y#", out, header.decompress_size+256);
     delete[] out;
 	return outObj;

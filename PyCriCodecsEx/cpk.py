@@ -282,7 +282,7 @@ class CPKBuilder:
             for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
                 if compress:
                     futures.append(exec.submit(_crilayla_compress_to_file, src, dst))
-            for i, fut in as_completed(futures):
+            for i, fut in enumerate(as_completed(futures)):
                 fut.result()
                 self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(futures))
         for (src, filename, _) , (dst, _) in zip(self.in_files,self.os_files):
