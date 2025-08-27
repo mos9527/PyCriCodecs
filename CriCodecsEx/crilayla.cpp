@@ -1,13 +1,19 @@
-/* 
-    CRI layla decompression.
-	written by tpu. (https://forum.xentax.com/viewtopic.php?f=21&t=5137&p=44220&hilit=CRILAYLA#p44220)
-	Python wrapper by me (and modification).
+/* CRILAYLA Encoder/Decoder
 
-	CRIcompress method by KenTse
-    Taken from wmltogether's fork of CriPakTools.
-    Python wrapper by me.
 
-	Note: I have no idea how this compression technique works. I just made the wrapper.
+CRI layla decompression.
+written by tpu. (https://forum.xentax.com/viewtopic.php?f=21&t=5137&p=44220&hilit=CRILAYLA#p44220)
+Python wrapper by https://github.com/Youjose/PyCriCodecs (and modification).
+
+CRIcompress method by KenTse
+Taken from wmltogether's fork of CriPakTools.
+Python wrapper by https://github.com/Youjose/PyCriCodecs.    
+TODO: This implementation may produce larger output - which shouldn't be
+possible with LZ-based compression. Investigate and fix.
+For now, if compression fails, the original data is returned.
+See also:
+    - https://github.com/FanTranslatorsInternational/Kuriimu2/blob/imgui/src/lib/Kompression/Encoder/CrilaylaEncoder.cs
+    - https://glinscott.github.io/lz/index.html
 */
 #define PY_SSIZE_T_CLEAN
 #pragma once
@@ -22,32 +28,30 @@ struct crilayla_header{
     unsigned int compressed_size;
 };
 
-
-unsigned char *sbuf;
-unsigned int bitcnt;
-unsigned int bitdat;
-unsigned int get_bits(unsigned int n){
-	unsigned int data, mask;
-
-    if (bitcnt<n){
-	  data = ((24-bitcnt)>>3)+1;
-	  bitcnt += data*8;
-      while(data) {
-		bitdat = (bitdat<<8) | (*sbuf--);
-		data--;
-      }
-    }
-
-	data = bitdat>>(bitcnt-n);
-	bitcnt -= n;
-	mask = (1<<n)-1;
-	data &= mask;
-	return data;
-}
-
 unsigned int llcp_dec(unsigned char *src, unsigned int src_len, unsigned char *dst, unsigned int dst_len){
-	unsigned char *dbuf, *pbuf;
+    unsigned char *dbuf, *pbuf;
 	unsigned int plen, poffset, byte;
+    unsigned char *sbuf;
+    unsigned int bitcnt;
+    unsigned int bitdat;
+    auto get_bits = [&](unsigned int n){
+        unsigned int data, mask;
+    
+        if (bitcnt<n){
+          data = ((24-bitcnt)>>3)+1;
+          bitcnt += data*8;
+          while(data) {
+            bitdat = (bitdat<<8) | (*sbuf--);
+            data--;
+          }
+        }
+    
+        data = bitdat>>(bitcnt-n);
+        bitcnt -= n;
+        mask = (1<<n)-1;
+        data &= mask;
+        return data;
+    };
 
 	sbuf = src+src_len-1;
 	dbuf = dst+dst_len-1;
@@ -151,7 +155,7 @@ unsigned int layla_comp(unsigned char *dest, int *destLen, unsigned char *src, i
                 d = ((d << 10) | 0x3ff); T += 10; p -= 44;
                 for (;;)
                 {
-                    for (; T >= 8;)
+                    for (; m > 0 && T >= 8;)
                     {
                         *(dest + m--) = (d >> (T - 8)) & 0xff; T -= 8; d = d&((1 << T) - 1);
                     }
@@ -161,22 +165,27 @@ unsigned int layla_comp(unsigned char *dest, int *destLen, unsigned char *src, i
                 d = (d << 8) | p; T += 8;
             }
         }
-        for (; T >= 8;)
+        for (; m > 0 && T >= 8;)
         {
             *(dest + m--) = (d >> (T - 8)) & 0xff; T -= 8; d = d&((1 << T) - 1);
         }
     }
-    if (T != 0)
+    if (m > 0 && T != 0)
     {
         *(dest + m--) = d << (8 - T);
     }
-    *(dest + m--) = 0; *(dest + m) = 0;
-    for (;;)
-    {
-        if (((*destLen - m) & 3) == 0) break;
-        *(dest + m--) = 0;
+    if (m > 0) {
+        *(dest + m--) = 0; *(dest + m) = 0;
+        for (;;)
+        {
+            if (((*destLen - m) & 3) == 0) break;
+            *(dest + m--) = 0;
+        }
     }
+    if (m <= 0) 
+        return 0; // Underflow    
     *destLen = *destLen - m; dest += m;
+    // CRIL AYLA srcLen-0x100 destLen
     int l[] = { 0x4c495243,0x414c5941,srcLen - 0x100,*destLen };
     for (j = 0; j<4; j++)
     {
@@ -201,6 +210,11 @@ PyObject* CriLaylaDecompress(PyObject* self, PyObject* d){
 	unsigned char *data = (unsigned char *)PyBytes_AsString(d);
 	crilayla_header header = *(crilayla_header*)data;
     
+    if (header.crilayla != 0x414c59434152494cULL) {
+        PyErr_SetString(PyExc_ValueError, "Invalid CRILAYLA header.");
+        return NULL;
+    }
+    
     unsigned char *out;
     Py_BEGIN_ALLOW_THREADS
 	out = layla_decomp((data+16), header);
@@ -223,15 +237,22 @@ PyObject* CriLaylaCompress(PyObject* self, PyObject* args){
     if(!PyArg_ParseTuple(args, "y#", &data, &data_size)){
         return NULL;
     }
-    unsigned char *buf = new unsigned char[data_size];
-    memset(buf, 0, data_size);
 
-    int compressed_size = data_size;
+    unsigned char *buf = new unsigned char[data_size + 0x200];
+
+    int compressed_size = data_size;    
+    int res = 0;
     Py_BEGIN_ALLOW_THREADS
-    layla_comp(buf, &compressed_size, data, compressed_size);
+    res = layla_comp(buf, &compressed_size, data, compressed_size);
     Py_END_ALLOW_THREADS
-
-	PyObject* bufObj = Py_BuildValue("y#", buf, compressed_size);
+    PyObject* bufObj;
+    if (res && res < data_size) {
+        bufObj = Py_BuildValue("y#", buf, compressed_size);
+    } else {        
+        // FIXME
+        PyErr_SetString(PyExc_RuntimeError, "Compression failure.");
+        return NULL;
+    }
     delete[] buf;
     return bufObj;
 }

@@ -34,8 +34,8 @@ Load, Extract and modify ACB files
     print('Done.')
 
 Build USM files
-**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 ---------------------------
+**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 
 .. code-block:: python
 
@@ -52,8 +52,8 @@ Build USM files
     print('Build Done.')
 
 Load, extract then remux USM files into MP4
-**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 ---------------------------
+**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 
 .. code-block:: python
 

@@ -11,8 +11,14 @@ import CriCodecsEx
 def _crilayla_compress_to_file(src : str, dst: str):
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
         data = fsrc.read()
-        compressed = CriCodecsEx.CriLaylaCompress(data)
-        fdst.write(compressed)
+        try:
+            compressed = CriCodecsEx.CriLaylaCompress(data)
+            fdst.write(compressed)
+        except:
+            # Fallback for failed compression
+            # Again. FIXME.
+            fdst.write(data)
+            
 @dataclass
 class PackedFile():
     """Helper class for packed files within a CPK."""
@@ -254,8 +260,7 @@ class CPKBuilder:
         
         NOTE: 
             - In ITOC-related mode, the insertion order determines the final integer ID of the files.            
-        """
-        assert not compress, "FIXME: Compression not working."
+        """        
         if not dst and self.mode != 0:
             raise ValueError("Destination filename must be specified in non-ITOC mode.")
         
