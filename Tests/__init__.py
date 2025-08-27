@@ -1,9 +1,7 @@
 import os
+from logging import getLogger, DEBUG, basicConfig
 
-from coloredlogs import install
-from logging import getLogger, DEBUG
-
-install(level=DEBUG)
+basicConfig(level=DEBUG)
 logger = getLogger("tests")
 
 SOURCE_DIR = os.path.dirname(__file__)
