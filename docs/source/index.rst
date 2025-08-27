@@ -123,3 +123,5 @@ External Links
 - https://github.com/Nyagamon/ADXDecoder
 - https://github.com/Thealexbarney/VGAudio
 - http://wiki.multimedia.cx/index.php?title=CRI_ADX_ADPCM
+- https://github.com/FanTranslatorsInternational/Kuriimu2/blob/imgui/src/lib/Kompression/Encoder/CrilaylaEncoder.cs
+- https://glinscott.github.io/lz/index.html
