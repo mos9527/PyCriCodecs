@@ -1,6 +1,8 @@
 Load, Extract and modify ACB files
 ---------------------------
+
 .. code-block:: python
+
     from PyCriCodecsEx.acb import ACB, ACBBuilder, HCACodec, ADXCodec
     from PyCriCodecsEx.awb import AWBBuilder
     # Load the '.acb' file.
@@ -22,18 +24,21 @@ Load, Extract and modify ACB files
     src.set_waveforms([HCACodec('some_audio.wav')])
     # Rename the cue
     src.view.CueNameTable[0].CueName = "The New Cue"
-    # Drop cue at index 1
-    src.view.CueTable.pop(1)
-    src.view.CueNameTable.pop(1) # Optional to pop names
+    # Only keep the first cue
+    while len(src.view.CueTable) > 1:
+        src.view.CueTable.pop(-1)
+        src.view.CueNameTable.pop(-1) # Optional to pop names
     # Build the binary again
     build = ACBBuilder(src)
     open(outfile, "wb").write(build.build())
     print('Done.')
 
 Build USM files
-**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 ---------------------------
+**NOTE:** FFmpeg must be installed and available in PATH for this to work.
+
 .. code-block:: python
+
     from PyCriCodecsEx.usm import USM, USMBuilder, ADXCodec, HCACodec
     builder = USMBuilder()
     builder.add_video('some_video.m1v')
@@ -47,9 +52,11 @@ Build USM files
     print('Build Done.')
 
 Load, extract then remux USM files into MP4
-**NOTE:** FFmpeg must be installed and available in PATH for this to work.
 ---------------------------
+**NOTE:** FFmpeg must be installed and available in PATH for this to work.
+
 .. code-block:: python
+
     usm = USM('build.usm')
     audio = usm.get_audios()
     video = usm.get_video()
@@ -84,7 +91,9 @@ Load, extract then remux USM files into MP4
 
 Extract CPK files
 ---------------------------
+
 .. code-block:: python
+
     import os
     from PyCriCodecsEx.cpk import CPK
     
@@ -104,7 +113,9 @@ Extract CPK files
 
 Pack files into a CPK
 ---------------------------
+
 .. code-block:: python
+    
     import os
     from PyCriCodecsEx.cpk import CPKBuilder
 

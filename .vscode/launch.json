@@ -5,13 +5,40 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) Launch USMDecode",
+            "name": "(gdb) Launch CRILAYLA",
             "type": "cppdbg",
             "request": "launch",
             "program": "/opt/miniconda3/bin/python",
             "args": [
                 "-m",
-                "Tests.test_USMDecode"
+                "Tests.test_CRILAYLA"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",            
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },  
+        {
+            "name": "(gdb) Launch CPK",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/opt/miniconda3/bin/python",
+            "args": [
+                "-m",
+                "Tests.test_CPK"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -30,8 +57,7 @@
                     "ignoreFailures": true
                 }
             ]
-        },
-        
+        },              
         {
             "name": "Test: ACB",
             "type": "debugpy",

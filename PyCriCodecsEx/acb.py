@@ -221,7 +221,7 @@ class ACB(UTF):
 
         Input item may be a codec (if known), or a tuple of (Codec ID, Channel Count, Sample Count, Sample Rate, Raw data).
 
-        NOTE: Cue duration is not set. You need to change that manually.
+        NOTE: Cue duration is not set. You need to change that manually - this is usually unecessary as the player will just play until the end of the waveform.
         """
         WAVEFORM = self.view.WaveformTable[0]._payload.copy()
         encoded = []

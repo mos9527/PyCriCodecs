@@ -11,8 +11,14 @@ import CriCodecsEx
 def _crilayla_compress_to_file(src : str, dst: str):
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
         data = fsrc.read()
-        compressed = CriCodecsEx.CriLaylaCompress(data)
-        fdst.write(compressed)
+        try:
+            compressed = CriCodecsEx.CriLaylaCompress(data)
+            fdst.write(compressed)
+        except:
+            # Fallback for failed compression
+            # Again. FIXME.
+            fdst.write(data)
+            
 @dataclass
 class PackedFile():
     """Helper class for packed files within a CPK."""
@@ -253,9 +259,8 @@ class CPKBuilder:
             compress (bool, optional): Whether to compress the file. Defaults to False.
         
         NOTE: 
-            - In ITOC-related mode, the insertion order determines the final integer ID of the files.
-            - Compression can be VERY slow with high entropy files (e.g. encoded media). Use at discretion.
-        """
+            - In ITOC-related mode, the insertion order determines the final integer ID of the files.            
+        """        
         if not dst and self.mode != 0:
             raise ValueError("Destination filename must be specified in non-ITOC mode.")
         
@@ -281,7 +286,8 @@ class CPKBuilder:
             futures = []
             for (src, _, _), (dst, compress) in zip(self.in_files,self.os_files):
                 if compress:
-                    futures.append(exec.submit(_crilayla_compress_to_file, src, dst))
+                    _crilayla_compress_to_file(src, dst)
+                    # futures.append(exec.submit(_crilayla_compress_to_file, src, dst))
             for i, fut in enumerate(as_completed(futures)):
                 fut.result()
                 self.progress_cb("Compress %s" % os.path.basename(src), i + 1, len(futures))

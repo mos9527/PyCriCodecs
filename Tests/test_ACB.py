@@ -19,8 +19,12 @@ def test_acb_edit():
     # Replace AWB waveform
     print('Replacing waveform')
     src.set_waveforms([HCACodec(WAV_sample)])
-    # Rename the cue
+    # Rename the cue    
     src.view.CueNameTable[0].CueName = "The New Cue"
+    # Only keep the first cue
+    while len(src.view.CueTable) > 1:
+        src.view.CueTable.pop(-1)
+        src.view.CueNameTable.pop(-1) # Optional to pop names
     # Build the binary again
     build = ACBBuilder(src)
     open(outfile, "wb").write(build.build())

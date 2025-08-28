@@ -89,6 +89,7 @@ Roadmap
 
 Currently Known Bugs
 ====================
+* (!!) CRILAYLA implementation can somehow produce larger output than input. (FIXME)
 * USM seeking does not work. Though most games don't use it anyways.
 * Not important, and might not fix: ADX encoding and decoding at higher bitdepths (11-15) adds popping noise.
 * Some CPK's that has the same filename for every file in the entry will overwrite each other.
@@ -122,3 +123,5 @@ External Links
 - https://github.com/Nyagamon/ADXDecoder
 - https://github.com/Thealexbarney/VGAudio
 - http://wiki.multimedia.cx/index.php?title=CRI_ADX_ADPCM
+- https://github.com/FanTranslatorsInternational/Kuriimu2/blob/imgui/src/lib/Kompression/Encoder/CrilaylaEncoder.cs
+- https://glinscott.github.io/lz/index.html
