@@ -4,7 +4,6 @@ Load, Extract and modify ACB files
     from PyCriCodecsEx.acb import ACB, ACBBuilder, HCACodec, ADXCodec
     from PyCriCodecsEx.awb import AWBBuilder
     # Load the '.acb' file.
-    # You can also optionally set the keys here.
     src = ACB('some_cuesheet.acb')
     print(f'Loaded {src.name}')
     # cue.Waveforms indexes into this
@@ -16,7 +15,7 @@ Load, Extract and modify ACB files
             # This will write the decoded WAV file to the outname path
             # Alternatively, you can access the encoded bytes through `.get_encoded()`
             # Format of which can be determined through the waveforms' type.            
-            waveforms[wav].save(outname)
+            waveforms[wav].save(outname) # Key can be optionally set here
             print(f' -> {outname}')
     # Replace AWB waveform
     # Only WAVs are supported
@@ -126,8 +125,6 @@ Pack files into a CPK
             # Create a relative path for the file inside the CPK.
             dst_path = os.path.relpath(src_path, source_dir).replace('\\', '/')
             print(f'Adding {src_path} as {dst_path}')
-            # Compression is optional. Refer to CPKBuilder documentation for recommended usage.
-            builder.add_file(src_path, dst_path, compress=True)
-    # Compression across multiple files may be parallelized for faster processing.
-    builder.save(output_cpk_path, threads=4)
+            builder.add_file(src_path, dst_path)
+    builder.save(output_cpk_path)
     print(f'\nRepack done. Saved to {output_cpk_path}')

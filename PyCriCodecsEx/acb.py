@@ -188,10 +188,17 @@ class ACB(UTF):
         """Returns the AWB object associated with the ACB."""
         return AWB(self.view.AwbFile)
 
-    def get_waveforms(self) -> List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int,  bytes]]:
+    def get_waveforms(self, **kwargs) -> List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int,  bytes]]:
         """Returns a list of decoded waveforms.
 
         Item may be a codec (if known), or a tuple of (Codec ID, Channel Count, Sample Count, Sample Rate, Raw data).
+
+        Additional keyword arguments are passed to the codec constructors. e.g. for encrypted HCA payloads,
+        you may do the following:
+        ```python
+        get_waveforms(key=..., subkey=...)
+        ```
+        See also the respective docs (ADXCodec, HCACodec) for more details.
         """
         CODEC_TABLE = {
             AcbEncodeTypes.ADX: ADXCodec,
@@ -204,7 +211,7 @@ class ACB(UTF):
             encode = AcbEncodeTypes(wav.EncodeType)
             codec = (CODEC_TABLE.get(encode, None))
             if codec:
-                wavs.append(codec(awb.get_file_at(wav.MemoryAwbId)))
+                wavs.append(codec(awb.get_file_at(wav.MemoryAwbId), **kwargs))
             else:
                 wavs.append((encode, wav.NumChannels, wav.NumSamples, wav.SamplingRate, awb.get_file_at(wav.MemoryAwbId)))
         return wavs
