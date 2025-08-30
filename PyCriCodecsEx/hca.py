@@ -332,7 +332,7 @@ class HCACodec(HCA):
 
         Args:
             stream (str | bytes): Path to the HCA or WAV file, or a BinaryIO stream. WAV files will be automatically encoded with the given settings first.
-            filename (str, optional): USM filename. Defaults to "default.hca".
+            filename (str, optional): Filename, used by USMBuilder. Defaults to "default.hca".
             quality (CriHcaQuality, optional): Encoding quality. Defaults to CriHcaQuality.High.
             key (int, optional): HCA key. Defaults to 0.
             subkey (int, optional): HCA subkey. Defaults to 0.

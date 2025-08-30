@@ -13,11 +13,7 @@ except ImportError:
 import tempfile
 
 # Big thanks and credit for k0lb3 and 9th helping me write this specific code.
-# Also credit for the original C++ code from Nyagamon/bnnm.
-
-# Apparently there is an older USM format called SofDec? This is for SofDec2 though.
-# Extraction working only for now, although check https://github.com/donmai-me/WannaCRI/
-# code for a complete breakdown of the USM format.
+# Also credit for the original C++ code from Nyagamon/bnnm and https://github.com/donmai-me/WannaCRI/
 
 class USMCrypt:
     """USM related crypto functions"""
