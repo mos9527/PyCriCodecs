@@ -57,7 +57,7 @@ class ADXCodec(ADX):
 
         Args:
             stream (str | bytes): Path to the ADX or WAV file, or a BinaryIO stream. WAV files will be automatically encoded with the given settings first.
-            filename (str, optional): Output filename. Defaults to "default.adx".
+            filename (str, optional): Filename, used by USMBuilder. Defaults to "default.adx".
             bitdepth (int, optional): Audio bit depth within [2,15]. Defaults to 4.
         """
         if type(stream) == str:
